@@ -28,7 +28,7 @@ class TenderVectorDB:
                  embedding_model,
                  qdrant_host: str = "localhost", 
                  qdrant_port: int = 6333,
-                 collection_name: str = "tender_embeddings"):
+                 collection_name: str = "tender_offers_history"):
         
         self.logger = logging.getLogger(__name__)
         self.embedding_model = embedding_model

@@ -453,6 +453,68 @@ class TenderAnalysisSystem:
         
         self.logger.info("✅ Систему завантажено")
     
+    def create_vector_db_from_jsonl(self, jsonl_path: str, collection_name: Optional[str] = None, batch_size: int = 100) -> Dict[str, Any]:
+        """
+        Створення векторної бази з файлу JSONL з усіма полями
+        Args:
+            jsonl_path: шлях до файлу JSONL з тендерами
+            collection_name: назва колекції Qdrant (опціонально)
+            batch_size: розмір батчу для індексації
+        Returns:
+            Статистика індексації
+        """
+        self.logger.info(f"📂 Завантаження даних з {jsonl_path} для створення векторної бази...")
+        if not Path(jsonl_path).exists():
+            self.logger.error(f"❌ Файл {jsonl_path} не знайдено")
+            raise FileNotFoundError(f"Файл {jsonl_path} не знайдено")
+
+        # Завантаження даних з JSONL
+        historical_data = []
+        with open(jsonl_path, 'r', encoding='utf-8') as f:
+            for line_num, line in enumerate(f, 1):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    record = json.loads(line)
+                    historical_data.append(record)
+                except Exception as e:
+                    self.logger.warning(f"Помилка парсингу JSON у рядку {line_num}: {e}")
+
+        self.logger.info(f"✅ Завантажено {len(historical_data)} записів з {jsonl_path}")
+
+        # Якщо потрібно, створюємо нову колекцію з новою назвою
+        if collection_name:
+            from .vector_database import TenderVectorDB
+            self.vector_db = TenderVectorDB(
+                embedding_model=self.embedding_model,
+                qdrant_host=self.qdrant_config['host'],
+                qdrant_port=self.qdrant_config['port'],
+                collection_name=collection_name
+            )
+            self.logger.info(f"🔧 Створено нову колекцію Qdrant: {collection_name}")
+        elif self.vector_db is None:
+            from .vector_database import TenderVectorDB
+            self.vector_db = TenderVectorDB(
+                embedding_model=self.embedding_model,
+                qdrant_host=self.qdrant_config['host'],
+                qdrant_port=self.qdrant_config['port']
+            )
+
+        # Передаємо менеджер категорій у векторну базу (для категоризації)
+        if hasattr(self.vector_db, 'category_manager') and self.vector_db.category_manager is None:
+            self.vector_db.category_manager = self.categories_manager
+
+        # Індексація у векторній базі
+        stats = self.vector_db.index_tenders(
+            historical_data=historical_data,
+            update_mode=False,
+            batch_size=batch_size
+        )
+
+        self.logger.info(f"✅ Векторна база створена. Проіндексовано: {stats.get('indexed_count', 0)} записів")
+        return stats
+    
     # Приватні допоміжні методи
     
     def _update_system_metrics(self, data: List[Dict]):

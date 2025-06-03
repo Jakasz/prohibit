@@ -2,7 +2,7 @@ import json
 import re
 import logging
 from datetime import datetime
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 from collections import defaultdict, Counter
 from pathlib import Path
 import numpy as np
@@ -147,7 +147,7 @@ class CategoryManager:
             },
             "communication": {
                 "id": "communication", 
-                "name": "Расходы на связь, каналы данных, интернет",
+                "name": "Расходы на связь, канали даних, інтернет",
                 "active": True,
                 "keywords": ["зв'язок", "інтернет", "телефон", "мобільн", "канал", 
                            "передач", "даних", "хостинг", "домен", "wifi", "ethernet"],
@@ -163,7 +163,7 @@ class CategoryManager:
         Завантаження категорій з JSONL файлу
         
         Формат файлу:
-        {"category": "Расходы на связь, каналы данных, интернет", "active": true}
+        {"category": "Расходы на связь, канали данных, интернет", "active": true}
         {"category": "Електроніка", "active": false}
         """
         try:
