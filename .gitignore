@@ -1,0 +1,36 @@
+app.py
+categories.jsonl
+db_create.py
+fb_loader.py
+gem.py
+out_10.jsonl
+out_11.jsonl
+out_dt.json
+.qdrant-initialized
+storage/
+snapshots/
+output_data.json
+# Ignore Python cache files
+__pycache__/
+# Ignore virtual environment directories
+venv/
+# Ignore Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+# Ignore log files
+*.log
+# Ignore temporary files
+*.tmp
+
+# Ignore environment variable files
+.env
+output.json
+qdrant.exe
+tender_data.jsonl
+test_search.py
+update_data.jsonl
+update_recreate_db.py
+Промпти.txt
+app copy.py
+README.md
+requirements.txt
+industries.py
