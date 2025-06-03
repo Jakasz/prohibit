@@ -23,7 +23,8 @@ import joblib
 # Qdrant для векторної бази
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
-
+from .prediction_engine import PredictionEngine
+from .feature_extractor import FeatureExtractor
 
 class TenderAnalysisSystem:
     """
@@ -127,6 +128,17 @@ class TenderAnalysisSystem:
                 competition_analyzer=self.competition_analyzer,
                 categories_manager=self.categories_manager
             )
+            # 6. Ініціалізація екстрактора ознак
+            feature_extractor = FeatureExtractor(
+                categories_manager=self.categories_manager,
+                competition_analyzer=self.competition_analyzer
+            )
+            self.predictor = PredictionEngine(
+                feature_extractor=feature_extractor
+            )
+            self.predictor.supplier_profiler = self.supplier_profiler
+            self.predictor.competition_analyzer = self.competition_analyzer
+            self.predictor.categories_manager = self.categories_manager
             
             self.is_initialized = True
             self.logger.info("✅ Всі підсистеми ініціалізовано успішно")
