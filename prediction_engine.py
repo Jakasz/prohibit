@@ -26,9 +26,9 @@ except ImportError:
     SCIPY_AVAILABLE = False
 
 # Локальні імпорти (додати після створення файлів)
-from .feature_extractor import FeatureExtractor
-from .feature_processor import AdvancedFeatureProcessor
-from .model_monitor import ModelMonitor
+from feature_extractor import FeatureExtractor
+from feature_processor import AdvancedFeatureProcessor
+from model_monitor import ModelMonitor
 
 class PredictionEngine:
     """Основний двигун прогнозування тендерів"""

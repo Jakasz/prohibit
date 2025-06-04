@@ -33,7 +33,16 @@ class TenderVectorDB:
         self.logger = logging.getLogger(__name__)
         self.embedding_model = embedding_model
         self.collection_name = collection_name
-        
+
+        # Статистика (має бути ДО _init_collection)
+        self.stats = {
+            'total_indexed': 0,
+            'total_updated': 0,
+            'total_searches': 0,
+            'last_index_time': None,
+            'last_update_time': None
+        }
+
         # Підключення до Qdrant
         try:
             self.client = QdrantClient(host=qdrant_host, port=qdrant_port)
@@ -41,11 +50,11 @@ class TenderVectorDB:
         except Exception as e:
             self.logger.error(f"❌ Помилка підключення до Qdrant: {e}")
             raise
-        
+
         # Ініціалізація колекції
         self._init_collection()
-        
-        # Кеш для уникнення повторних обчислень
+
+        # Кеші
         self.embedding_cache = {}
         self.hash_cache = {}  # Для відстеження унікальності записів
         

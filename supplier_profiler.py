@@ -79,9 +79,9 @@ class SupplierProfile:
 class SupplierProfiler:
     """Система профілювання постачальників"""
     
-    def __init__(self, category_manager=None):
+    def __init__(self, categories_manager=None):
         self.profiles: Dict[str, SupplierProfile] = {}
-        self.category_manager = category_manager
+        self.categories_manager = categories_manager
         self.market_benchmarks: Dict[str, float] = {}
         self.logger = logging.getLogger(__name__)
         

@@ -23,8 +23,7 @@ import joblib
 # Qdrant для векторної бази
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
-from .prediction_engine import PredictionEngine
-from .feature_extractor import FeatureExtractor
+from feature_extractor import FeatureExtractor
 
 class TenderAnalysisSystem:
     """
@@ -96,11 +95,11 @@ class TenderAnalysisSystem:
             self.logger.info("🔧 Ініціалізація підсистем...")
             
             # 1. Ініціалізація менеджера категорій
-            from .category_manager import CategoryManager  # Буде створено далі
+            from category_manager import CategoryManager  # Буде створено далі
             self.categories_manager = CategoryManager(self.categories_file)
             
             # 2. Ініціалізація векторної бази
-            from .vector_database import TenderVectorDB  # Буде створено далі
+            from vector_database import TenderVectorDB  # Буде створено далі
             self.vector_db = TenderVectorDB(
                 embedding_model=self.embedding_model,
                 qdrant_host=self.qdrant_config['host'],
@@ -108,21 +107,21 @@ class TenderAnalysisSystem:
             )
             
             # 3. Ініціалізація профайлера постачальників
-            from .supplier_profiler import SupplierProfiler  # Буде створено далі
+            from supplier_profiler import SupplierProfiler  # Буде створено далі
             self.supplier_profiler = SupplierProfiler(
                 categories_manager=self.categories_manager,
-                embedding_model=self.embedding_model
+                # embedding_model=self.embedding_model
             )
             
             # 4. Ініціалізація аналізатора конкуренції
-            from .competition_analyzer import CompetitionAnalyzer  # Буде створено далі
+            from competition_analyzer import CompetitionAnalyzer  # Буде створено далі
             self.competition_analyzer = CompetitionAnalyzer(
                 categories_manager=self.categories_manager,
                 vector_db=self.vector_db
             )
             
             # 5. Ініціалізація системи прогнозування
-            from .prediction_engine import PredictionEngine  # Буде створено далі
+            from prediction_engine import PredictionEngine  # Буде створено далі
             self.predictor = PredictionEngine(
                 supplier_profiler=self.supplier_profiler,
                 competition_analyzer=self.competition_analyzer,
@@ -134,11 +133,14 @@ class TenderAnalysisSystem:
                 competition_analyzer=self.competition_analyzer
             )
             self.predictor = PredictionEngine(
-                feature_extractor=feature_extractor
+                # feature_extractor=feature_extractor
+                supplier_profiler = self.supplier_profiler,
+                competition_analyzer = self.competition_analyzer,
+                categories_manager = self.categories_manager
             )
-            self.predictor.supplier_profiler = self.supplier_profiler
-            self.predictor.competition_analyzer = self.competition_analyzer
-            self.predictor.categories_manager = self.categories_manager
+            # self.predictor.supplier_profiler = self.supplier_profiler
+            # self.predictor.competition_analyzer = self.competition_analyzer
+            # self.predictor.categories_manager = self.categories_manager
             
             self.is_initialized = True
             self.logger.info("✅ Всі підсистеми ініціалізовано успішно")

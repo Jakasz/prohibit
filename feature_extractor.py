@@ -10,8 +10,8 @@ import logging
 class FeatureExtractor:
     """Клас для вилучення ознак з даних тендерів"""
     
-    def __init__(self, category_manager, competition_analyzer):
-        self.category_manager = category_manager
+    def __init__(self, categories_manager, competition_analyzer):
+        self.category_manager = categories_manager
         self.competition_analyzer = competition_analyzer
         self.logger = logging.getLogger(__name__)
         
