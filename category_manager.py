@@ -158,6 +158,82 @@ class CategoryManager:
             }
         }
     
+
+    def load_category_mappings(self, mapping_file: str = "category_mappings.json"):
+        """Завантаження маппінгу категорій"""
+        try:
+            with open(mapping_file, 'r', encoding='utf-8') as f:
+                self.category_mappings = json.load(f)
+            
+            # Створюємо зворотній mapping
+            self.reverse_mapping = {}
+            for canonical, variants in self.category_mappings.items():
+                for variant in variants:
+                    self.reverse_mapping[variant.lower().strip()] = canonical
+            
+            self.logger.info(f"✅ Завантажено {len(self.category_mappings)} канонічних категорій")
+            return True
+        except Exception as e:
+            self.logger.error(f"❌ Помилка завантаження маппінгу: {e}")
+            return False
+
+    def get_canonical_category(self, category_name: str) -> str:
+        """Отримання канонічної назви категорії"""
+        if not hasattr(self, 'reverse_mapping'):
+            return category_name
+        
+        category_lower = category_name.lower().strip()
+        return self.reverse_mapping.get(category_lower, category_name)
+
+    def analyze_owner_patterns(self, historical_data: List[Dict]) -> Dict[str, Dict]:
+        """Аналіз патернів по власниках"""
+        owner_stats = defaultdict(lambda: {
+            'categories': defaultdict(int),
+            'industries': defaultdict(int),
+            'items_count': 0,
+            'unique_suppliers': set(),
+            'total_budget': 0.0
+        })
+        
+        for item in historical_data:
+            owner = item.get('OWNER_NAME', 'unknown')
+            stats = owner_stats[owner]
+            
+            # Категоризація
+            item_name = item.get('F_ITEMNAME', '')
+            if item_name:
+                categories = self.categorize_item(item_name)
+                if categories:
+                    primary_cat = categories[0][0]
+                    canonical_cat = self.get_canonical_category(primary_cat)
+                    stats['categories'][canonical_cat] += 1
+            
+            # Інші метрики
+            stats['industries'][item.get('F_INDUSTRYNAME', 'unknown')] += 1
+            stats['items_count'] += 1
+            stats['unique_suppliers'].add(item.get('EDRPOU', ''))
+            
+            try:
+                budget = float(item.get('ITEM_BUDGET', 0))
+                stats['total_budget'] += budget
+            except:
+                pass
+    
+        # Конвертація для серіалізації
+        result = {}
+        for owner, stats in owner_stats.items():
+            result[owner] = {
+                'categories': dict(stats['categories']),
+                'industries': dict(stats['industries']),
+                'items_count': stats['items_count'],
+                'unique_suppliers': len(stats['unique_suppliers']),
+                'total_budget': stats['total_budget']
+            }
+        
+        return result
+
+
+    
     def load_categories_from_file(self, filepath: str) -> bool:
         """
         Завантаження категорій з JSONL файлу

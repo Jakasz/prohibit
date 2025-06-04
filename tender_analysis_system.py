@@ -527,6 +527,90 @@ class TenderAnalysisSystem:
         self.logger.info(f"✅ Векторна база створена. Проіндексовано: {stats.get('indexed_count', 0)} записів")
         return stats
     
+    def process_large_dataset(self, jsonl_path: str, batch_size: int = 1000, max_records: int = None) -> Dict[str, Any]:
+        """
+        Потокова обробка великого JSONL файлу
+        
+        Args:
+            jsonl_path: шлях до JSONL файлу
+            batch_size: розмір батчу для обробки
+            max_records: максимальна кількість записів (для тестування)
+        """
+        self.logger.info(f"📂 Потокова обробка {jsonl_path}")
+        
+        if not Path(jsonl_path).exists():
+            raise FileNotFoundError(f"Файл {jsonl_path} не знайдено")
+        
+        stats = {
+            'total_read': 0,
+            'total_indexed': 0,
+            'total_errors': 0,
+            'batches_processed': 0
+        }
+        
+        batch_data = []
+        
+        with open(jsonl_path, 'r', encoding='utf-8') as f:
+            for line_num, line in enumerate(f, 1):
+                if max_records and line_num > max_records:
+                    break
+                
+                try:
+                    record = json.loads(line.strip())
+                    batch_data.append(record)
+                    stats['total_read'] += 1
+                    
+                    if len(batch_data) >= batch_size:
+                        # Обробка батчу
+                        self._process_batch(batch_data, stats)
+                        batch_data = []
+                        
+                        # Прогрес
+                        if stats['total_read'] % 10000 == 0:
+                            self.logger.info(f"Оброблено {stats['total_read']:,} записів")
+                            
+                except Exception as e:
+                    self.logger.error(f"Помилка в рядку {line_num}: {e}")
+                    stats['total_errors'] += 1
+        
+        # Останній батч
+        if batch_data:
+            self._process_batch(batch_data, stats)
+        
+        return stats
+
+    def _process_batch(self, batch_data: List[Dict], stats: Dict):
+        """Обробка одного батчу даних"""
+        try:
+            # Оновлення профілів постачальників
+            suppliers_by_edrpou = defaultdict(list)
+            for item in batch_data:
+                edrpou = item.get('EDRPOU')
+                if edrpou:
+                    suppliers_by_edrpou[edrpou].append(item)
+            
+            # Оновлення профілів
+            for edrpou, items in suppliers_by_edrpou.items():
+                self.supplier_profiler.update_profile(edrpou, items)
+            
+            # Індексація у векторній базі
+            index_results = self.vector_db.index_tenders(
+                batch_data,
+                update_mode=True,
+                batch_size=100
+            )
+            
+            stats['total_indexed'] += index_results['indexed_count']
+            stats['total_errors'] += index_results['error_count']
+            stats['batches_processed'] += 1
+            
+        except Exception as e:
+            self.logger.error(f"Помилка обробки батчу: {e}")
+            stats['total_errors'] += len(batch_data)
+
+
+
+
     # Приватні допоміжні методи
     
     def _update_system_metrics(self, data: List[Dict]):

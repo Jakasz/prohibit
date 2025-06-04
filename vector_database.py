@@ -191,34 +191,86 @@ class TenderVectorDB:
         
         return embedding
     
+    def _create_payload_indexes(self):
+        """Створення індексів для payload полів"""
+        indexes_to_create = [
+            ("tender_number", models.PayloadSchemaType.KEYWORD),
+            ("edrpou", models.PayloadSchemaType.KEYWORD),
+            ("owner_name", models.PayloadSchemaType.KEYWORD),  # ДОДАНО
+            ("industry", models.PayloadSchemaType.KEYWORD),
+            ("primary_category", models.PayloadSchemaType.KEYWORD),
+            ("cpv", models.PayloadSchemaType.INTEGER),
+            ("budget", models.PayloadSchemaType.FLOAT),
+            ("won", models.PayloadSchemaType.BOOL),
+            ("date_end", models.PayloadSchemaType.KEYWORD),
+            ("group_key", models.PayloadSchemaType.KEYWORD),  # ДОДАНО
+            ("created_at", models.PayloadSchemaType.DATETIME)
+        ]
+
+
     def _prepare_point(self, item: Dict, point_id: Optional[int] = None) -> models.PointStruct:
-        """Підготовка точки для індексації в Qdrant"""
-        # Створення ембедингу
-        item_name = item.get('F_ITEMNAME', '')
-        embedding = self._create_embedding(item_name)
+        """Підготовка точки для індексації в Qdrant з урахуванням OWNER_NAME"""
         
-        # Підготовка метаданих
+        # ЗМІНЕНО: Створення комбінованого тексту для ембедингу
+        combined_text = f"{item.get('F_ITEMNAME', '')} {item.get('F_TENDERNAME', '')} {item.get('F_DETAILNAME', '')}"
+        embedding = self._create_embedding(combined_text)
+        
+        # ЗМІНЕНО: Розширені метадані
         metadata = {
+            # Основні ідентифікатори
             'tender_number': item.get('F_TENDERNUMBER', ''),
-            'supplier_name': item.get('supp_name', ''),
             'edrpou': item.get('EDRPOU', ''),
-            'item_name': item_name,
+            'owner_name': item.get('OWNER_NAME', ''),  # ДОДАНО
+            
+            # Інформація про товар/послугу
+            'item_name': item.get('F_ITEMNAME', ''),
+            'tender_name': item.get('F_TENDERNAME', ''),  # ДОДАНО
+            'detail_name': item.get('F_DETAILNAME', ''),  # ДОДАНО
+            
+            # Постачальник
+            'supplier_name': item.get('supp_name', ''),
+            
+            # Класифікація
             'industry': item.get('F_INDUSTRYNAME', ''),
             'cpv': int(item.get('CPV', 0)) if item.get('CPV') else 0,
+            
+            # Фінансові показники
             'budget': float(item.get('ITEM_BUDGET', 0)) if item.get('ITEM_BUDGET') else 0.0,
             'quantity': float(item.get('F_qty', 0)) if item.get('F_qty') else 0.0,
             'price': float(item.get('F_price', 0)) if item.get('F_price') else 0.0,
+            'currency': item.get('F_TENDERCURRENCY', 'UAH'),  # ДОДАНО
+            'currency_rate': float(item.get('F_TENDERCURRENCYRATE', 1.0)),  # ДОДАНО
+            
+            # Результат та дати
             'won': bool(item.get('WON', False)),
             'date_end': item.get('DATEEND', ''),
+            'extraction_date': item.get('EXTRACTION_DATE', ''),  # ДОДАНО
+            
+            # Системні поля
+            'original_id': item.get('ID', ''),  # ДОДАНО
             'created_at': datetime.now().isoformat(),
             'content_hash': self._generate_content_hash(item)
         }
         
-        # Додавання категорій (якщо є CategoryManager)
+        # ДОДАНО: Створення композитного ключа для групування
+        group_key_parts = [
+            str(item.get('EDRPOU', '')),
+            str(item.get('F_INDUSTRYNAME', '')),
+            str(item.get('F_ITEMNAME', '')),
+            str(item.get('OWNER_NAME', '')),
+            str(item.get('F_TENDERNAME', ''))
+        ]
+        
+        if item.get('CPV'):
+            group_key_parts.append(str(item.get('CPV')))
+        
+        metadata['group_key'] = '-'.join(group_key_parts)
+        
+        # Існуючий код категоризації залишається
         if hasattr(self, 'category_manager') and self.category_manager:
-            categories = self.category_manager.categorize_item(item_name)
+            categories = self.category_manager.categorize_item(item.get('F_ITEMNAME', ''))
             metadata['primary_category'] = categories[0][0] if categories else 'unknown'
-            metadata['all_categories'] = [cat[0] for cat in categories[:3]]  # Топ-3 категорії
+            metadata['all_categories'] = [cat[0] for cat in categories[:3]]
             metadata['category_confidence'] = categories[0][1] if categories else 0.0
         
         # Використання переданого ID або генерація нового
@@ -742,3 +794,67 @@ class TenderVectorDB:
             self.logger.error(f"❌ Помилка перевірки здоров'я БД: {e}")
         
         return health_status
+    
+    def search_tenders_by_group(self, group_criteria: Dict, limit: int = 20) -> List[Dict]:
+        """Пошук тендерів за груповими критеріями"""
+        filter_conditions = []
+        
+        for field, value in group_criteria.items():
+            if value is not None:
+                filter_conditions.append(
+                    models.FieldCondition(
+                        key=field,
+                        match=models.MatchValue(value=value)
+                    )
+                )
+        
+        query_filter = models.Filter(must=filter_conditions) if filter_conditions else None
+        
+        try:
+            results = self.client.scroll(
+                collection_name=self.collection_name,
+                scroll_filter=query_filter,
+                limit=limit,
+                with_payload=True,
+                with_vectors=False
+            )[0]
+            
+            return [{
+                'id': point.id,
+                **point.payload
+            } for point in results]
+        except Exception as e:
+            self.logger.error(f"❌ Помилка пошуку за групою: {e}")
+            return []
+
+    def get_tender_groups(self, tender_number: str) -> Dict[str, List[Dict]]:
+        """Отримання всіх груп для конкретного тендера"""
+        try:
+            query_filter = models.Filter(
+                must=[
+                    models.FieldCondition(
+                        key="tender_number",
+                        match=models.MatchValue(value=tender_number)
+                    )
+                ]
+            )
+            
+            results = self.client.scroll(
+                collection_name=self.collection_name,
+                scroll_filter=query_filter,
+                limit=1000,
+                with_payload=True,
+                with_vectors=False
+            )[0]
+            
+            groups = defaultdict(list)
+            for point in results:
+                group_key = point.payload.get('group_key', 'unknown')
+                groups[group_key].append(point.payload)
+            
+            return dict(groups)
+            
+        except Exception as e:
+            self.logger.error(f"❌ Помилка отримання груп тендера: {e}")
+            return {}
+
