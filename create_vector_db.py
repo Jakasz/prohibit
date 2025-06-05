@@ -1,78 +1,95 @@
 #!/usr/bin/env python3
 """
-Безпечний скрипт для створення/оновлення векторної бази
+Оптимізований скрипт для створення векторної бази
 """
 
 import logging
+import json
 from pathlib import Path
 from tender_analysis_system import TenderAnalysisSystem
 from qdrant_client import QdrantClient
-from qdrant_client.http.exceptions import UnexpectedResponse
+from tqdm import tqdm  # Додайте імпорт на початку файлу
 
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 
-def check_collection_exists(host="localhost", port=6333, collection_name="tender_vectors"):
-    """Перевірка існування колекції"""
-    try:
-        client = QdrantClient(host=host, port=port)
-        collections = client.get_collections()
-        return any(col.name == collection_name for col in collections.collections)
-    except:
-        return False
+def monitor_progress(system, start_count, interval=50000):
+    """Моніторинг прогресу та розміру"""
+    current_count = system.vector_db.get_collection_size()
+    if current_count - start_count >= interval:
+        stats = system.vector_db.get_storage_info()
+        logging.info(f"""
+        📊 СТАТИСТИКА:
+        - Записів: {current_count:,}
+        - Розмір векторів: {stats['vectors_size_gb']} ГБ
+        - Розмір метаданих: {stats['payload_size_gb']} ГБ
+        - Загальний розмір: {stats['estimated_total_gb']} ГБ
+        """)
+        return current_count
+    return start_count
 
-def create_or_update_vector_database(
+def process_file_with_stats(file_path, system, batch_size=1000):
+    print(f"\n📁 Обробка файлу: {file_path}")
+    file_size = Path(file_path).stat().st_size / (1024**3)
+    print(f"📊 Розмір файлу: {file_size:.2f} ГБ")
+    
+    # Підрахунок кількості рядків
+    print("📝 Підрахунок записів...")
+    with open(file_path, 'r', encoding='utf-8') as f:
+        total_lines = sum(1 for _ in f)
+    print(f"✅ Всього записів: {total_lines:,}")
+    
+    # Завантаження та обробка
+    data = []
+    with open(file_path, 'r', encoding='utf-8') as f:
+        for line in tqdm(f, total=total_lines, desc="Завантаження"):
+            try:
+                data.append(json.loads(line.strip()))
+            except Exception as e:
+                pass  # Можна рахувати помилки тут
+    
+    # Індексація
+    stats = system.vector_db.index_tenders(
+        data,
+        update_mode=True,
+        batch_size=batch_size
+    )
+    
+    return stats
+
+def create_optimized_vector_database(
     jsonl_files: list,
     categories_file: str = "categories.jsonl",
     collection_name: str = "tender_vectors",
-    batch_size: int = 1000,
-    recreate: bool = False,  # True = видалити стару базу
-    max_records: int = None
+    batch_size: int = 2000,  # Збільшено
+    max_records: int = None,
+    monitor_interval: int = 50000
 ):
     """
-    Створення або оновлення векторної бази
-    
-    Args:
-        recreate: True - видалити існуючу базу і створити нову
-                 False - додати нові записи до існуючої
+    Створення оптимізованої векторної бази
     """
     
     print("="*60)
-    print("🚀 ВЕКТОРНА БАЗА ТЕНДЕРІВ")
+    print("🚀 ОПТИМІЗОВАНА ВЕКТОРНА БАЗА ТЕНДЕРІВ")
     print("="*60)
     
-    # 1. Перевірка існування колекції
-    collection_exists = check_collection_exists(collection_name=collection_name)
-    
-    if collection_exists:
-        print(f"ℹ️ Колекція '{collection_name}' вже існує")
-        
-        if recreate:
-            print("⚠️ Режим RECREATE: існуюча колекція буде видалена")
-            response = input("Продовжити? (y/n): ")
-            if response.lower() != 'y':
-                print("❌ Операція скасована")
-                return False
-            
-            # Видалення колекції
-            client = QdrantClient(host="localhost", port=6333)
-            client.delete_collection(collection_name)
-            print("🗑️ Колекція видалена")
-            collection_exists = False
-        else:
-            print("📝 Режим UPDATE: нові записи будуть додані до існуючої бази")
-            
-            # Отримання поточної статистики
-            client = QdrantClient(host="localhost", port=6333)
-            info = client.get_collection(collection_name)
-            print(f"📊 Поточний розмір бази: {info.points_count:,} записів")
-    else:
-        print(f"🆕 Колекція '{collection_name}' буде створена")
+    # 1. Видалення старої колекції (якщо є)
+    try:
+        client = QdrantClient(host="localhost", port=6333)
+        client.delete_collection(collection_name)
+        print(f"🗑️ Видалено стару колекцію '{collection_name}'")
+    except:
+        print(f"ℹ️ Колекція '{collection_name}' не існувала")
     
     # 2. Ініціалізація системи
     print("\n📦 Ініціалізація системи...")
+    
+    # Відключаємо логування від transformers
+    import logging
+    logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
+    
     system = TenderAnalysisSystem(
         categories_file=categories_file,
         qdrant_host="localhost",
@@ -83,86 +100,52 @@ def create_or_update_vector_database(
         print("❌ Помилка ініціалізації!")
         return False
     
-    # 3. Встановлення правильної колекції
-    if collection_exists and not recreate:
-        # Використовуємо існуючу колекцію
-        system.vector_db.collection_name = collection_name
-    else:
-        # Створюємо нову колекцію
-        system.vector_db = system.vector_db.__class__(
-            embedding_model=system.embedding_model,
-            qdrant_host="localhost",
-            qdrant_port=6333,
-            collection_name=collection_name
-        )
+    # Встановлення нової колекції
+    system.vector_db.collection_name = collection_name
     
-    # 4. Обробка файлів
+    # 3. Обробка файлів
     total_indexed = 0
     total_skipped = 0
-    
+    total_errors = 0
+
     for idx, jsonl_file in enumerate(jsonl_files, 1):
         print(f"\n📁 Файл {idx}/{len(jsonl_files)}: {Path(jsonl_file).name}")
-        
         if not Path(jsonl_file).exists():
             print(f"❌ Файл не знайдено: {jsonl_file}")
             continue
-        
-        file_size_mb = Path(jsonl_file).stat().st_size / (1024**2)
-        print(f"📊 Розмір: {file_size_mb:.1f} MB")
-        
-        # Завантаження даних
-        print("📥 Завантаження даних...")
-        data = []
-        
-        with open(jsonl_file, 'r', encoding='utf-8') as f:
-            for line_num, line in enumerate(f, 1):
-                if max_records and line_num > max_records:
-                    print(f"⏹️ Досягнуто ліміт {max_records} записів")
-                    break
-                    
-                try:
-                    record = json.loads(line.strip())
-                    data.append(record)
-                    
-                    if len(data) % 10000 == 0:
-                        print(f"  Завантажено {len(data):,} записів...")
-                        
-                except Exception as e:
-                    print(f"⚠️ Помилка в рядку {line_num}: {e}")
-        
-        print(f"✅ Завантажено {len(data):,} записів")
-        
-        # Індексація
-        print("🔄 Індексація у векторну базу...")
-        stats = system.vector_db.index_tenders(
-            historical_data=data,
-            update_mode=not recreate,  # update_mode=True якщо не recreate
-            batch_size=batch_size
-        )
-        
-        indexed = stats.get('indexed_count', 0)
-        skipped = stats.get('skipped_count', 0)
-        errors = stats.get('error_count', 0)
-        
-        total_indexed += indexed
-        total_skipped += skipped
-        
-        print(f"✅ Проіндексовано: {indexed:,}")
-        print(f"⏭️ Пропущено (дублікати): {skipped:,}")
-        print(f"❌ Помилок: {errors:,}")
+
+        # Використовуємо нову функцію
+        stats = process_file_with_stats(jsonl_file, system, batch_size=batch_size)
+        total_indexed += stats.get('indexed_count', 0)
+        total_skipped += stats.get('skipped_count', 0)
+        total_errors += stats.get('error_count', 0)
+
+        print(f"✅ Файл оброблено. Проіндексовано: {stats.get('indexed_count', 0):,}")
+
+    # 4. Оптимізація колекції
+    print("\n🔧 Оптимізація колекції...")
+    system.vector_db.optimize_collection()
     
     # 5. Фінальна статистика
     print("\n" + "="*60)
-    print("📊 ПІДСУМКИ:")
-    print(f"✅ Нових записів додано: {total_indexed:,}")
-    print(f"⏭️ Пропущено дублікатів: {total_skipped:,}")
+    print("📊 ФІНАЛЬНА СТАТИСТИКА:")
     
-    # Перевірка фінального розміру
-    try:
-        db_stats = system.vector_db.get_collection_stats()
-        print(f"🗄️ Загальний розмір бази: {db_stats['points_count']:,} записів")
-    except:
-        pass
+    final_stats = system.vector_db.get_collection_stats()
+    print(f"✅ Всього записів: {final_stats['points_count']:,}")
+    print(f"📦 Розмір векторів: {final_stats['vectors_size_gb']} ГБ")
+    print(f"📦 Розмір метаданих: {final_stats['payload_size_gb']} ГБ")
+    print(f"💾 Загальний розмір: {final_stats['estimated_total_gb']} ГБ")
+    print(f"⏭️ Пропущено дублікатів: {total_skipped:,}")
+    print(f"❌ Помилок: {total_errors:,}")
+    
+    # Перевірка ефективності
+    if final_stats['points_count'] > 0:
+        bytes_per_point = (final_stats['estimated_total_gb'] * 1024**3) / final_stats['points_count']
+        print(f"📏 Байт на запис: {bytes_per_point:.0f}")
+        
+        # Попередження якщо розмір великий
+        if bytes_per_point > 5000:
+            print("⚠️ УВАГА: Розмір на запис завеликий! Перевірте оптимізацію.")
     
     print("="*60)
     
@@ -176,29 +159,21 @@ if __name__ == "__main__":
     
     # Ваші файли
     FILES = [
-        "out_10.jsonl",
-        "out_11.jsonl"
-        # "path/to/your/second_file.jsonl"
+        "out_10_nodup.jsonl",
+        "out_12_nodup.jsonl"
     ]
     
-    # Опції
-    COLLECTION_NAME = "tender_vectors"  # Назва колекції
-    BATCH_SIZE = 1700
-    
-    # ВАЖЛИВО: Режим роботи
-    RECREATE_DATABASE = True  # False = додати до існуючої, True = створити нову
+    # Параметри
+    COLLECTION_NAME = "tender_vectors"  # Нова назва!
+    BATCH_SIZE = 1500  # Збільшено для швидкості
+    MONITOR_INTERVAL = 100000  # Моніторинг кожні 100к записів
     
     # Для тестування
-    MAX_RECORDS = None  # None = всі записи, число = обмеження
+    MAX_RECORDS = None  # None = всі записи, або число для тесту
     
     # ===== ЗАПУСК =====
     
-    print("🔧 Режим роботи:")
-    if RECREATE_DATABASE:
-        print("  ⚠️ RECREATE - існуюча база буде ВИДАЛЕНА і створена нова")
-    else:
-        print("  ✅ UPDATE - нові записи будуть ДОДАНІ до існуючої бази")
-    
+    print("🔧 ОПТИМІЗОВАНА ВЕРСІЯ")
     print(f"\n📁 Файли для обробки:")
     for f in FILES:
         print(f"  - {f}")
@@ -206,16 +181,17 @@ if __name__ == "__main__":
     print(f"\n⚙️ Параметри:")
     print(f"  - Колекція: {COLLECTION_NAME}")
     print(f"  - Batch size: {BATCH_SIZE}")
+    print(f"  - Monitor interval: {MONITOR_INTERVAL:,}")
     print(f"  - Max records: {MAX_RECORDS or 'Всі'}")
     
     response = input("\nПродовжити? (y/n): ")
     if response.lower() == 'y':
-        create_or_update_vector_database(
+        create_optimized_vector_database(
             jsonl_files=FILES,
             collection_name=COLLECTION_NAME,
             batch_size=BATCH_SIZE,
-            recreate=RECREATE_DATABASE,
-            max_records=MAX_RECORDS
+            max_records=MAX_RECORDS,
+            monitor_interval=MONITOR_INTERVAL
         )
     else:
         print("❌ Операція скасована")

@@ -36,3 +36,7 @@ requirements.txt
 industries.py
 out_11.json
 out_12.jsonl
+vector_database1.py
+vector_database2.py
+out_10_nodup.jsonl
+out_12_nodup.jsonl

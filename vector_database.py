@@ -5,7 +5,10 @@ from typing import Dict, List, Optional, Any, Tuple
 from collections import defaultdict
 import numpy as np
 import hashlib
-
+from tqdm import tqdm
+import sys
+import os
+from sentence_transformers import SentenceTransformer
 # Qdrant для векторної бази
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
@@ -28,21 +31,19 @@ class TenderVectorDB:
                  embedding_model,
                  qdrant_host: str = "localhost", 
                  qdrant_port: int = 6333,
-                 collection_name: str = "tender_offers_history"):
+                 collection_name: str = "tender_vectors"):
         
         self.logger = logging.getLogger(__name__)
         self.embedding_model = embedding_model
+        import transformers
+        import datasets
+        transformers.logging.set_verbosity_error()
+        datasets.logging.set_verbosity_error()
+        if hasattr(self.embedding_model, 'tokenizer') and self.embedding_model.tokenizer:
+            self.embedding_model.tokenizer.verbose = False
+
         self.collection_name = collection_name
-
-        # Статистика (має бути ДО _init_collection)
-        self.stats = {
-            'total_indexed': 0,
-            'total_updated': 0,
-            'total_searches': 0,
-            'last_index_time': None,
-            'last_update_time': None
-        }
-
+        
         # Підключення до Qdrant
         try:
             self.client = QdrantClient(host=qdrant_host, port=qdrant_port)
@@ -50,11 +51,11 @@ class TenderVectorDB:
         except Exception as e:
             self.logger.error(f"❌ Помилка підключення до Qdrant: {e}")
             raise
-
+        
         # Ініціалізація колекції
         self._init_collection()
-
-        # Кеші
+        
+        # Кеш для уникнення повторних обчислень
         self.embedding_cache = {}
         self.hash_cache = {}  # Для відстеження унікальності записів
         
@@ -83,19 +84,35 @@ class TenderVectorDB:
             
             try:
                 self.client.create_collection(
-                    collection_name=self.collection_name,
+                    collection_name=self.collection_name,  # ДОДАНО!
                     vectors_config=models.VectorParams(
-                        size=768,  # Розмір для paraphrase-multilingual-mpnet-base-v2
-                        distance=models.Distance.COSINE
+                        size=768,
+                        distance=models.Distance.COSINE,                    
+                        on_disk=True
                     ),
                     # Налаштування для оптимізації
                     optimizers_config=models.OptimizersConfigDiff(
-                        default_segment_number=2,
-                        max_segment_size=20000,
-                        memmap_threshold=50000,
-                        indexing_threshold=20000,
-                        flush_interval_sec=10,
-                        max_optimization_threads=2
+                        default_segment_number=4,
+                        max_segment_size=100000,
+                        memmap_threshold=20000,
+                        indexing_threshold=50000,
+                        flush_interval_sec=30,
+                        max_optimization_threads=1
+                    ),
+                    hnsw_config=models.HnswConfigDiff(
+                        m=16,  # Зменшено з дефолтних 64
+                        ef_construct=100,  # Зменшено з дефолтних 200
+                        full_scan_threshold=10000,
+                        max_indexing_threads=1,
+                        on_disk=True,  # HNSW індекс на диску
+                        payload_m=16
+                    ),
+                    quantization_config=models.ScalarQuantization(
+                        scalar=models.ScalarQuantizationConfig(
+                            type=models.ScalarType.INT8,
+                            quantile=0.99,
+                            always_ram=False
+                        )
                     ),
                     # Налаштування реплікації та шардинга
                     shard_number=1,
@@ -112,17 +129,13 @@ class TenderVectorDB:
                 raise
     
     def _create_payload_indexes(self):
-        """Створення індексів для payload полів"""
+        """Створення індексів тільки для критичних полів"""
         indexes_to_create = [
             ("tender_number", models.PayloadSchemaType.KEYWORD),
             ("edrpou", models.PayloadSchemaType.KEYWORD),
-            ("industry", models.PayloadSchemaType.KEYWORD),
-            ("primary_category", models.PayloadSchemaType.KEYWORD),
-            ("cpv", models.PayloadSchemaType.INTEGER),
-            ("budget", models.PayloadSchemaType.FLOAT),
             ("won", models.PayloadSchemaType.BOOL),
-            ("date_end", models.PayloadSchemaType.KEYWORD),
-            ("created_at", models.PayloadSchemaType.DATETIME)
+            ("industry", models.PayloadSchemaType.KEYWORD),
+            # НЕ індексуємо F_ITEMNAME - це текстове поле, займає багато місця
         ]
         
         for field_name, field_type in indexes_to_create:
@@ -130,10 +143,10 @@ class TenderVectorDB:
                 self.client.create_payload_index(
                     collection_name=self.collection_name,
                     field_name=field_name,
-                    field_schema=field_type
+                    field_schema=field_type,
+                    wait=False  # Асинхронне створення
                 )
             except Exception as e:
-                # Індекс вже може існувати
                 self.logger.debug(f"Індекс для {field_name}: {e}")
     
     def _preprocess_text(self, text: str) -> str:
@@ -167,54 +180,51 @@ class TenderVectorDB:
         return text
     
     def _generate_content_hash(self, item: Dict) -> str:
-        """Генерація хешу для унікальної ідентифікації записів"""
-        # Використовуємо ключові поля для створення унікального хешу
-        key_fields = [
-            item.get('F_TENDERNUMBER', ''),
-            item.get('EDRPOU', ''),
-            item.get('F_ITEMNAME', ''),
-            str(item.get('ITEM_BUDGET', '')),
-            item.get('DATEEND', '')
-        ]
-        
-        content_str = '|'.join(str(field) for field in key_fields)
-        return hashlib.md5(content_str.encode('utf-8')).hexdigest()
+        """Генерація короткого хешу"""
+        key_str = f"{item.get('F_TENDERNUMBER', '')}{item.get('EDRPOU', '')}{item.get('F_ITEMNAME', '')}{item.get('F_INDUSTRYNAME', '')}"
+        return hashlib.md5(key_str.encode('utf-8')).hexdigest()[:16]  # Коротший хеш
+
     
     def _create_embedding(self, text: str) -> np.ndarray:
-        """Створення ембедингу з кешуванням"""
-        # Перевірка кешу
+        """Створення ембедингу з кешуванням та нормалізацією"""
         if text in self.embedding_cache:
             return self.embedding_cache[text]
         
-        # Створення нового ембедингу
         processed_text = self._preprocess_text(text)
         if not processed_text:
-            # Порожній вектор для порожнього тексту
             embedding = np.zeros(768)
         else:
-            embedding = self.embedding_model.encode(processed_text)
+            # Відключаємо вивід при енкодингу
+            with open(os.devnull, 'w') as devnull:
+                old_stdout = sys.stdout
+                sys.stdout = devnull
+                embedding = self.embedding_model.encode(processed_text, show_progress_bar=False)
+                sys.stdout = old_stdout
+            
+            # Нормалізація для кращої компресії
+            embedding = embedding / np.linalg.norm(embedding)
         
-        # Збереження в кеш (обмежуємо розмір кешу)
-        if len(self.embedding_cache) < 10000:
+        if len(self.embedding_cache) < 5000:
             self.embedding_cache[text] = embedding
         
         return embedding
+
     
-    def _create_payload_indexes(self):
-        """Створення індексів для payload полів"""
-        indexes_to_create = [
-            ("tender_number", models.PayloadSchemaType.KEYWORD),
-            ("edrpou", models.PayloadSchemaType.KEYWORD),
-            ("owner_name", models.PayloadSchemaType.KEYWORD),  # ДОДАНО
-            ("industry", models.PayloadSchemaType.KEYWORD),
-            ("primary_category", models.PayloadSchemaType.KEYWORD),
-            ("cpv", models.PayloadSchemaType.INTEGER),
-            ("budget", models.PayloadSchemaType.FLOAT),
-            ("won", models.PayloadSchemaType.BOOL),
-            ("date_end", models.PayloadSchemaType.KEYWORD),
-            ("group_key", models.PayloadSchemaType.KEYWORD),  # ДОДАНО
-            ("created_at", models.PayloadSchemaType.DATETIME)
-        ]
+    # def _create_payload_indexes(self):
+    #     """Створення індексів для payload полів"""
+    #     indexes_to_create = [
+    #         ("tender_number", models.PayloadSchemaType.KEYWORD),
+    #         ("edrpou", models.PayloadSchemaType.KEYWORD),
+    #         ("owner_name", models.PayloadSchemaType.KEYWORD),  # ДОДАНО
+    #         ("industry", models.PayloadSchemaType.KEYWORD),
+    #         ("primary_category", models.PayloadSchemaType.KEYWORD),
+    #         ("cpv", models.PayloadSchemaType.INTEGER),
+    #         ("budget", models.PayloadSchemaType.FLOAT),
+    #         ("won", models.PayloadSchemaType.BOOL),
+    #         ("date_end", models.PayloadSchemaType.KEYWORD),
+    #         ("group_key", models.PayloadSchemaType.KEYWORD),  # ДОДАНО
+    #         ("created_at", models.PayloadSchemaType.DATETIME)
+    #     ]
 
 
     def _prepare_point(self, item: Dict, point_id: Optional[int] = None) -> models.PointStruct:
@@ -292,17 +302,29 @@ class TenderVectorDB:
             payload=metadata
         )
     
+    def optimize_collection(self):
+        """Оптимізація колекції після індексації"""
+        try:
+            # Форсуємо оптимізацію сегментів
+            self.client.update_collection(
+                collection_name=self.collection_name,
+                optimizer_config=models.OptimizersConfigDiff(
+                    max_segment_size=500000,
+                    memmap_threshold=100000,
+                    indexing_threshold=100000
+                )
+            )
+            self.logger.info("✅ Колекція оптимізована")
+        except Exception as e:
+            self.logger.error(f"❌ Помилка оптимізації: {e}")
+
+
     def index_tenders(self, 
-                     historical_data: List[Dict], 
-                     update_mode: bool = False,
-                     batch_size: int = 100) -> Dict[str, Any]:
+                 historical_data: List[Dict], 
+                 update_mode: bool = False,
+                 batch_size: int = 1000) -> Dict[str, Any]:
         """
-        Індексація тендерів у векторній базі
-        
-        Args:
-            historical_data: Список тендерів для індексації
-            update_mode: True для оновлення, False для повної переініціалізації
-            batch_size: Розмір батчу для обробки
+        Індексація тендерів у векторній базі з єдиним прогрес-баром
         """
         self.logger.info(f"🔄 Індексація {len(historical_data)} записів (update_mode: {update_mode})")
         
@@ -325,14 +347,30 @@ class TenderVectorDB:
             except Exception as e:
                 self.logger.warning(f"Помилка очищення колекції: {e}")
         
-        # Отримання існуючих хешів для уникнення дублювання
+        # Отримання існуючих хешів
         existing_hashes = set()
         if update_mode:
+            self.logger.info("📋 Завантаження існуючих хешів...")
             existing_hashes = self._get_existing_hashes()
-            self.logger.info(f"📋 Знайдено {len(existing_hashes)} існуючих записів")
+            self.logger.info(f"✅ Знайдено {len(existing_hashes)} існуючих записів")
+        
+        # Підготовка прогрес-бару
+        total_items = len(historical_data)
+        pbar = tqdm(
+            total=total_items,
+            desc="🚀 Індексація",
+            unit="записів",
+            ncols=120,
+            bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate} записів/с]'
+        )
         
         # Обробка батчами
         points_to_upsert = []
+        processed_count = 0
+        
+        # Статистика для виводу
+        stats_update_interval = 1000
+        last_stats_update = 0
         
         for i, item in enumerate(historical_data):
             try:
@@ -341,6 +379,12 @@ class TenderVectorDB:
                 
                 if update_mode and content_hash in existing_hashes:
                     results['skipped_count'] += 1
+                    pbar.set_postfix({
+                        'Індексовано': results['indexed_count'],
+                        'Пропущено': results['skipped_count'],
+                        'Помилок': results['error_count']
+                    }, refresh=False)
+                    pbar.update(1)
                     continue
                 
                 # Створення точки
@@ -353,21 +397,48 @@ class TenderVectorDB:
                     results['indexed_count'] += success_count
                     results['error_count'] += len(points_to_upsert) - success_count
                     points_to_upsert = []
+                    
+                    # Оновлення статистики в прогрес-барі
+                    pbar.set_postfix({
+                        'Індексовано': results['indexed_count'],
+                        'Пропущено': results['skipped_count'],
+                        'Помилок': results['error_count'],
+                        'Швидкість': f"{pbar.format_dict['rate_fmt']}"
+                    }, refresh=True)
                 
-                # Прогрес
-                if (i + 1) % 1000 == 0:
-                    self.logger.info(f"📈 Оброблено {i + 1}/{len(historical_data)} записів")
+                processed_count += 1
+                pbar.update(1)
+                
+                # Детальна статистика кожні N записів
+                if processed_count - last_stats_update >= stats_update_interval:
+                    elapsed = (datetime.now() - start_time).total_seconds()
+                    speed = processed_count / elapsed if elapsed > 0 else 0
+                    eta = (total_items - processed_count) / speed if speed > 0 else 0
+
+                    pbar.set_postfix({
+                        'Індексовано': results['indexed_count'],
+                        'Пропущено': results['skipped_count'],
+                        'Помилок': results['error_count'],
+                        'Швидкість': f"{speed:.0f}/сек",
+                        'Залишилось': str(timedelta(seconds=int(eta)))
+                    }, refresh=True)
+                    last_stats_update = processed_count
                     
             except Exception as e:
-                self.logger.error(f"❌ Помилка обробки запису {i}: {e}")
                 results['error_count'] += 1
+                if results['error_count'] <= 10:  # Показуємо тільки перші 10 помилок
+                    tqdm.write(f"❌ Помилка обробки запису {i}: {e}")
+                pbar.update(1)
                 continue
         
         # Обробка останнього батчу
         if points_to_upsert:
+            pbar.set_description("🔄 Завершення останнього батчу")
             success_count = self._upsert_batch(points_to_upsert)
             results['indexed_count'] += success_count
             results['error_count'] += len(points_to_upsert) - success_count
+        
+        pbar.close()
         
         # Фіналізація
         results['processing_time'] = (datetime.now() - start_time).total_seconds()
@@ -376,13 +447,31 @@ class TenderVectorDB:
         self.stats['total_indexed'] = self.get_collection_size()
         self.stats['last_index_time'] = datetime.now().isoformat()
         
-        self.logger.info(f"✅ Індексація завершена за {results['processing_time']:.2f} сек")
-        self.logger.info(f"📊 Проіндексовано: {results['indexed_count']}, "
-                        f"Пропущено: {results['skipped_count']}, "
-                        f"Помилок: {results['error_count']}")
-        
+        # Фінальна статистика
+        print("\n" + "="*60)
+        print("✅ ІНДЕКСАЦІЯ ЗАВЕРШЕНА")
+        print("="*60)
+        print(f"📊 Загальна статистика:")
+        print(f"   • Оброблено записів: {results['total_processed']:,}")
+        print(f"   • Проіндексовано: {results['indexed_count']:,}")
+        print(f"   • Пропущено дублікатів: {results['skipped_count']:,}")
+        print(f"   • Помилок: {results['error_count']:,}")
+        print(f"   • Час обробки: {timedelta(seconds=int(results['processing_time']))}")
+        print(f"   • Середня швидкість: {results['total_processed']/results['processing_time']:.0f} записів/сек")
+        print(f"   • Розмір колекції: {self.stats['total_indexed']:,} записів")
+        print("="*60)
+        self.optimize_collection()  
         return results
-    
+
+    def _format_time(self, seconds: float) -> str:
+        """Форматування часу в читабельний вигляд"""
+        if seconds < 60:
+            return f"{seconds:.0f} сек"
+        elif seconds < 3600:
+            return f"{seconds/60:.1f} хв"
+        else:
+            return f"{seconds/3600:.1f} год"
+
     def _get_existing_hashes(self) -> set:
         """Отримання існуючих хешів для уникнення дублювання"""
         try:
