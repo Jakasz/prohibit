@@ -52,8 +52,7 @@ class TenderVectorDB:
             self.logger.error(f"❌ Помилка підключення до Qdrant: {e}")
             raise
         
-        # Ініціалізація колекції
-        self._init_collection()
+
         
         # Кеш для уникнення повторних обчислень
         self.embedding_cache = {}
@@ -67,6 +66,9 @@ class TenderVectorDB:
             'last_index_time': None,
             'last_update_time': None
         }
+        
+        # Ініціалізація колекції
+        self._init_collection()
     
     def _init_collection(self):
         """Ініціалізація або створення колекції Qdrant"""
@@ -321,7 +323,7 @@ class TenderVectorDB:
 
     def index_tenders(self, 
                  historical_data: List[Dict], 
-                 update_mode: bool = False,
+                 update_mode: bool = True,
                  batch_size: int = 1000) -> Dict[str, Any]:
         """
         Індексація тендерів у векторній базі з єдиним прогрес-баром
