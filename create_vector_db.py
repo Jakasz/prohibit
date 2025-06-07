@@ -279,7 +279,7 @@ if __name__ == "__main__":
     
     # Параметри
     COLLECTION_NAME = "tender_vectors"  # Назва колекції
-    BATCH_SIZE = 1500                   # Розмір батчу
+    BATCH_SIZE = 1700                   # Розмір батчу
     MONITOR_INTERVAL = 100000           # Інтервал моніторингу
     
     # Режими роботи (розкоментуйте потрібний)

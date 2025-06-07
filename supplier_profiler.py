@@ -105,6 +105,104 @@ class SupplierProfiler:
             'standard': ['стандарт', 'якісн', 'надійн'],
             'budget': ['економ', 'бюджет', 'аналог']
         }
+    def build_profiles(self, historical_data: List[Dict], update_mode: bool = False) -> Dict[str, Any]:
+        """
+        Масове створення/оновлення профілів постачальників
+        
+        Args:
+            historical_data: Список історичних даних тендерів
+            update_mode: True для оновлення існуючих профілів
+        """
+        self.logger.info(f"🔄 Створення профілів для {len(historical_data)} записів...")
+        
+        # Групування даних по постачальниках
+        suppliers_data = defaultdict(list)
+        for item in historical_data:
+            edrpou = item.get('EDRPOU')
+            if edrpou:
+                suppliers_data[edrpou].append(item)
+        
+        self.logger.info(f"📊 Знайдено {len(suppliers_data)} унікальних постачальників")
+        
+        results = {
+            'total_suppliers': len(suppliers_data),
+            'new_profiles': 0,
+            'updated_profiles': 0,
+            'errors': 0
+        }
+    
+        # Створення/оновлення профілів
+        for edrpou, supplier_items in tqdm(suppliers_data.items(), desc="Створення профілів"):
+            try:
+                if edrpou in self.profiles and update_mode:
+                    # Оновлення існуючого профілю
+                    self.update_profile(edrpou, supplier_items)
+                    results['updated_profiles'] += 1
+                else:
+                    # Створення нового профілю
+                    profile = self.create_profile(supplier_items)
+                    if profile:
+                        self.profiles[edrpou] = profile
+                        results['new_profiles'] += 1
+            except Exception as e:
+                self.logger.error(f"Помилка створення профілю для {edrpou}: {e}")
+                results['errors'] += 1
+        
+        self.logger.info(f"✅ Створено профілів: {results['new_profiles']}")
+        self.logger.info(f"✅ Оновлено профілів: {results['updated_profiles']}")
+        
+        return results
+
+    def get_all_profiles(self) -> Dict[str, SupplierProfile]:
+        """Отримання всіх профілів"""
+        return self.profiles
+
+    def export_state(self) -> Dict[str, Any]:
+        """Експорт стану профайлера"""
+        return {
+            'profiles': {
+                edrpou: profile.to_dict() 
+                for edrpou, profile in self.profiles.items()
+            },
+            'market_benchmarks': self.market_benchmarks
+        }
+
+    def load_state(self, state_data: Dict[str, Any]):
+        """Завантаження стану профайлера"""
+        # Очищення поточних профілів
+        self.profiles.clear()
+        
+        # Завантаження профілів
+        profiles_data = state_data.get('profiles', {})
+        for edrpou, profile_data in profiles_data.items():
+            # Відновлення профілю
+            profile = SupplierProfile(
+                edrpou=edrpou,
+                name=profile_data.get('name', '')
+            )
+            
+            # Відновлення метрик
+            metrics_data = profile_data.get('metrics', {})
+            for key, value in metrics_data.items():
+                setattr(profile.metrics, key, value)
+            
+            # Відновлення інших полів
+            profile.categories = profile_data.get('categories', {})
+            profile.industries = profile_data.get('industries', {})
+            profile.cpv_experience = profile_data.get('cpv_experience', {})
+            profile.brand_expertise = profile_data.get('brand_expertise', [])
+            profile.competitive_advantages = profile_data.get('competitive_advantages', [])
+            profile.weaknesses = profile_data.get('weaknesses', [])
+            profile.market_position = profile_data.get('market_position', 'unknown')
+            profile.reliability_score = profile_data.get('reliability_score', 0.0)
+            
+            self.profiles[edrpou] = profile
+        
+        # Завантаження бенчмарків
+        self.market_benchmarks = state_data.get('market_benchmarks', {})
+        
+        self.logger.info(f"✅ Завантажено {len(self.profiles)} профілів")
+
     
     def create_profile(self, supplier_data: List[Dict]) -> SupplierProfile:
         """Створення профілю постачальника"""

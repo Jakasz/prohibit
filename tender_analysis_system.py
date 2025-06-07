@@ -98,6 +98,11 @@ class TenderAnalysisSystem:
             from category_manager import CategoryManager  # Буде створено далі
             self.categories_manager = CategoryManager(self.categories_file)
             
+            if Path("category_mappings.json").exists():            
+                self.categories_manager.load_category_mappings("category_mappings.json")
+                self.logger.info("✅ Завантажено маппінг категорій")
+
+
             # 2. Ініціалізація векторної бази
             from vector_database import TenderVectorDB  # Буде створено далі
             self.vector_db = TenderVectorDB(
@@ -138,9 +143,7 @@ class TenderAnalysisSystem:
                 competition_analyzer = self.competition_analyzer,
                 categories_manager = self.categories_manager
             )
-            # self.predictor.supplier_profiler = self.supplier_profiler
-            # self.predictor.competition_analyzer = self.competition_analyzer
-            # self.predictor.categories_manager = self.categories_manager
+            
             
             self.is_initialized = True
             self.logger.info("✅ Всі підсистеми ініціалізовано успішно")

@@ -71,28 +71,27 @@ class TenderVectorDB:
         self._init_collection()
     
     def _init_collection(self):
-        """Ініціалізація або створення колекції Qdrant"""
-        try:
-            # Перевірка існування колекції
+        """Ініціалізація або створення колекції Qdrant без try/except для існування"""
+        # Отримуємо список існуючих колекцій
+        collections = self.client.get_collections().collections
+        collection_names = [col.name for col in collections]
+
+        if self.collection_name in collection_names:
+            # Колекція вже існує
             collection_info = self.client.get_collection(self.collection_name)
             self.logger.info(f"✅ Колекція '{self.collection_name}' вже існує")
-            
-            # Отримання поточного розміру
             self.stats['total_indexed'] = collection_info.points_count
-            
-        except (ResponseHandlingException, UnexpectedResponse):
-            # Створення нової колекції
+        else:
+            # Створюємо нову колекцію
             self.logger.info(f"🔧 Створення нової колекції '{self.collection_name}'...")
-            
             try:
                 self.client.create_collection(
-                    collection_name=self.collection_name,  # ДОДАНО!
+                    collection_name=self.collection_name,
                     vectors_config=models.VectorParams(
                         size=768,
-                        distance=models.Distance.COSINE,                    
+                        distance=models.Distance.COSINE,
                         on_disk=True
                     ),
-                    # Налаштування для оптимізації
                     optimizers_config=models.OptimizersConfigDiff(
                         default_segment_number=4,
                         max_segment_size=100000,
@@ -102,11 +101,11 @@ class TenderVectorDB:
                         max_optimization_threads=1
                     ),
                     hnsw_config=models.HnswConfigDiff(
-                        m=16,  # Зменшено з дефолтних 64
-                        ef_construct=100,  # Зменшено з дефолтних 200
+                        m=16,
+                        ef_construct=100,
                         full_scan_threshold=10000,
                         max_indexing_threads=1,
-                        on_disk=True,  # HNSW індекс на диску
+                        on_disk=True,
                         payload_m=16
                     ),
                     quantization_config=models.ScalarQuantization(
@@ -116,16 +115,11 @@ class TenderVectorDB:
                             always_ram=False
                         )
                     ),
-                    # Налаштування реплікації та шардинга
                     shard_number=1,
                     replication_factor=1
                 )
-                
-                # Створення індексів для швидкого пошуку
                 self._create_payload_indexes()
-                
                 self.logger.info(f"✅ Колекція '{self.collection_name}' створена успішно")
-                
             except Exception as e:
                 self.logger.error(f"❌ Помилка створення колекції: {e}")
                 raise
@@ -326,9 +320,10 @@ class TenderVectorDB:
                  update_mode: bool = True,
                  batch_size: int = 1000) -> Dict[str, Any]:
         """
-        Індексація тендерів у векторній базі з єдиним прогрес-баром
+        Індексація тендерів у векторній базі з оптимізованим виводом
         """
-        self.logger.info(f"🔄 Індексація {len(historical_data)} записів (update_mode: {update_mode})")
+        print(f"\n🔄 Індексація {len(historical_data):,} записів")
+        print(f"📋 Режим: {'Оновлення (перевірка дублікатів)' if update_mode else 'Повна переіндексація'}")
         
         start_time = datetime.now()
         results = {
@@ -349,46 +344,50 @@ class TenderVectorDB:
             except Exception as e:
                 self.logger.warning(f"Помилка очищення колекції: {e}")
         
-        # Отримання існуючих хешів
+        # Отримання існуючих хешів БЕЗ прогрес-бару
         existing_hashes = set()
         if update_mode:
-            self.logger.info("📋 Завантаження існуючих хешів...")
+            load_start = datetime.now()
             existing_hashes = self._get_existing_hashes()
-            self.logger.info(f"✅ Знайдено {len(existing_hashes)} існуючих записів")
+            load_time = (datetime.now() - load_start).total_seconds()
+            print(f"⏱️ Час завантаження хешів: {load_time:.1f} сек\n")
         
-        # Підготовка прогрес-бару
-        total_items = len(historical_data)
+        # Спочатку підрахуємо скільки буде нових записів
+        new_items = []
+        print("🔍 Перевірка на дублікати...")
+        
+        for item in historical_data:
+            content_hash = self._generate_content_hash(item)
+            if not update_mode or content_hash not in existing_hashes:
+                new_items.append(item)
+            else:
+                results['skipped_count'] += 1
+        
+        print(f"📊 Результат перевірки:")
+        print(f"   • Нових записів: {len(new_items):,}")
+        print(f"   • Дублікатів: {results['skipped_count']:,}")
+        
+        if not new_items:
+            print("\n✅ Всі записи вже є в базі, нічого не додано")
+            results['processing_time'] = (datetime.now() - start_time).total_seconds()
+            return results
+        
+        # Тепер створюємо прогрес-бар ТІЛЬКИ для нових записів
+        print(f"\n🚀 Індексація {len(new_items):,} нових записів:")
+        
+        # Використовуємо простіший формат прогрес-бару
         pbar = tqdm(
-            total=total_items,
-            desc="🚀 Індексація",
+            total=len(new_items),
+            desc="Індексація",
             unit="записів",
-            ncols=120,
-            bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate} записів/с]'
+            ncols=100
         )
         
         # Обробка батчами
         points_to_upsert = []
-        processed_count = 0
         
-        # Статистика для виводу
-        stats_update_interval = 1000
-        last_stats_update = 0
-        
-        for i, item in enumerate(historical_data):
+        for i, item in enumerate(new_items):
             try:
-                # Перевірка унікальності
-                content_hash = self._generate_content_hash(item)
-                
-                if update_mode and content_hash in existing_hashes:
-                    results['skipped_count'] += 1
-                    pbar.set_postfix({
-                        'Індексовано': results['indexed_count'],
-                        'Пропущено': results['skipped_count'],
-                        'Помилок': results['error_count']
-                    }, refresh=False)
-                    pbar.update(1)
-                    continue
-                
                 # Створення точки
                 point = self._prepare_point(item)
                 points_to_upsert.append(point)
@@ -400,42 +399,25 @@ class TenderVectorDB:
                     results['error_count'] += len(points_to_upsert) - success_count
                     points_to_upsert = []
                     
-                    # Оновлення статистики в прогрес-барі
-                    pbar.set_postfix({
-                        'Індексовано': results['indexed_count'],
-                        'Пропущено': results['skipped_count'],
-                        'Помилок': results['error_count'],
-                        'Швидкість': f"{pbar.format_dict['rate_fmt']}"
-                    }, refresh=True)
+                    # Оновлення статистики кожні 10 батчів
+                    if (i // batch_size) % 10 == 0:
+                        elapsed = (datetime.now() - start_time).total_seconds()
+                        speed = results['indexed_count'] / elapsed if elapsed > 0 else 0
+                        pbar.set_postfix(
+                            indexed=f"{results['indexed_count']:,}",
+                            speed=f"{speed:.0f}/с"
+                        )
                 
-                processed_count += 1
                 pbar.update(1)
                 
-                # Детальна статистика кожні N записів
-                if processed_count - last_stats_update >= stats_update_interval:
-                    elapsed = (datetime.now() - start_time).total_seconds()
-                    speed = processed_count / elapsed if elapsed > 0 else 0
-                    eta = (total_items - processed_count) / speed if speed > 0 else 0
-
-                    pbar.set_postfix({
-                        'Індексовано': results['indexed_count'],
-                        'Пропущено': results['skipped_count'],
-                        'Помилок': results['error_count'],
-                        'Швидкість': f"{speed:.0f}/сек",
-                        'Залишилось': str(timedelta(seconds=int(eta)))
-                    }, refresh=True)
-                    last_stats_update = processed_count
-                    
             except Exception as e:
                 results['error_count'] += 1
-                if results['error_count'] <= 10:  # Показуємо тільки перші 10 помилок
-                    tqdm.write(f"❌ Помилка обробки запису {i}: {e}")
+                if results['error_count'] <= 10:
+                    tqdm.write(f"❌ Помилка обробки запису: {e}")
                 pbar.update(1)
-                continue
         
         # Обробка останнього батчу
         if points_to_upsert:
-            pbar.set_description("🔄 Завершення останнього батчу")
             success_count = self._upsert_batch(points_to_upsert)
             results['indexed_count'] += success_count
             results['error_count'] += len(points_to_upsert) - success_count
@@ -455,15 +437,25 @@ class TenderVectorDB:
         print("="*60)
         print(f"📊 Загальна статистика:")
         print(f"   • Оброблено записів: {results['total_processed']:,}")
-        print(f"   • Проіндексовано: {results['indexed_count']:,}")
+        print(f"   • Проіндексовано нових: {results['indexed_count']:,}")
         print(f"   • Пропущено дублікатів: {results['skipped_count']:,}")
         print(f"   • Помилок: {results['error_count']:,}")
-        print(f"   • Час обробки: {timedelta(seconds=int(results['processing_time']))}")
-        print(f"   • Середня швидкість: {results['total_processed']/results['processing_time']:.0f} записів/сек")
-        print(f"   • Розмір колекції: {self.stats['total_indexed']:,} записів")
+        print(f"   • Час обробки: {results['processing_time']:.1f} сек")
+        
+        if results['indexed_count'] > 0:
+            print(f"   • Швидкість індексації: {results['indexed_count']/results['processing_time']:.0f} записів/сек")
+        
+        print(f"\n📊 Стан колекції:")
+        print(f"   • Всього записів у базі: {self.stats['total_indexed']:,}")
         print("="*60)
-        self.optimize_collection()  
+        
+        # Оптимізація колекції якщо додали багато нових записів
+        if results['indexed_count'] > 10000:
+            print("\n🔧 Оптимізація колекції...")
+            self.optimize_collection()
+        
         return results
+
 
     def _format_time(self, seconds: float) -> str:
         """Форматування часу в читабельний вигляд"""
@@ -475,42 +467,47 @@ class TenderVectorDB:
             return f"{seconds/3600:.1f} год"
 
     def _get_existing_hashes(self) -> set:
-        """Отримання існуючих хешів для уникнення дублювання"""
+        """Спрощена версія отримання існуючих хешів без прогрес-бару"""
         try:
-            # Отримуємо всі точки з content_hash
-            scroll_result = self.client.scroll(
-                collection_name=self.collection_name,
-                limit=10000,  # Максимальний ліміт
-                with_payload=["content_hash"]
-            )
-            
             hashes = set()
-            points = scroll_result[0]
+            offset = None
+            batch_count = 0
             
-            for point in points:
-                if point.payload and 'content_hash' in point.payload:
-                    hashes.add(point.payload['content_hash'])
+            print(f"📋 Завантаження існуючих хешів...")
             
-            # Якщо є ще точки, продовжуємо скролинг
-            next_page_offset = scroll_result[1]
-            while next_page_offset:
+            while True:
+                # Отримуємо батч записів
                 scroll_result = self.client.scroll(
                     collection_name=self.collection_name,
-                    offset=next_page_offset,
+                    offset=offset,
                     limit=10000,
-                    with_payload=["content_hash"]
+                    with_payload=["content_hash"],
+                    with_vectors=False
                 )
                 
-                points = scroll_result[0]
+                points, next_offset = scroll_result
+                
+                if not points:
+                    break
+                    
+                # Додаємо хеші
                 for point in points:
                     if point.payload and 'content_hash' in point.payload:
                         hashes.add(point.payload['content_hash'])
                 
-                next_page_offset = scroll_result[1]
+                batch_count += 1
+                if batch_count % 10 == 0:
+                    print(f"   • Завантажено {len(hashes):,} хешів...")
+                
+                if not next_offset:
+                    break
+                    
+                offset = next_offset
             
+            print(f"✅ Завантажено {len(hashes):,} унікальних хешів")
             return hashes
             
-        except Exception as e:
+        except Exception as e:            
             self.logger.error(f"❌ Помилка отримання існуючих хешів: {e}")
             return set()
     

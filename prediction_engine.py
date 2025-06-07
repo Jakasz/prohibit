@@ -12,6 +12,8 @@ import pickle
 import joblib
 from datetime import datetime
 
+from supplier_profiler import SupplierProfile
+
 # Опціональні імпорти
 try:
     from xgboost import XGBClassifier
@@ -91,7 +93,80 @@ class PredictionEngine:
 
         self.ensemble_weights = {}
         self.calibrated_models = {}
+
+    def train_model(self, validation_split: float = 0.2, cv_folds: int = 5) -> Dict[str, Any]:
+        """
+        Обгортка для train_models з правильною назвою методу
+        """
+        # Спочатку потрібно підготувати дані
+        if not hasattr(self, 'training_data') or self.training_data is None:
+            raise ValueError("Немає даних для тренування. Спочатку викличте prepare_training_data()")
         
+        # Розпакування даних
+        X, y = self.training_data
+        
+        # Тренування моделей
+        performance = self.train_models(X, y, test_size=validation_split)
+        
+        # Формування результату
+        return {
+            'performance_metrics': {
+                'auc_score': performance.get('ensemble', {}).get('test_auc', 0),
+                'model_scores': {
+                    name: metrics.get('test_auc', 0) 
+                    for name, metrics in performance.items() 
+                    if name != 'ensemble'
+                }
+            },
+            'feature_importance': self.feature_importance,
+            'training_samples': len(X),
+            'models_trained': list(self.models.keys())
+        }
+
+    def prepare_training_data_from_history(self, historical_data: List[Dict], supplier_profiles: Dict[str, SupplierProfile]):
+        """
+        Підготовка даних для тренування з історичних даних і профілів
+        """
+        # Конвертація профілів в словники
+        profiles_dict = {}
+        for edrpou, profile in supplier_profiles.items():
+            if isinstance(profile, SupplierProfile):
+                profiles_dict[edrpou] = profile.to_dict()
+            else:
+                profiles_dict[edrpou] = profile
+        
+        # Підготовка даних
+        X, y = self.prepare_training_data(historical_data, profiles_dict)
+        
+        # Збереження для подальшого використання
+        self.training_data = (X, y)
+        
+        return X, y
+
+    def export_state(self) -> Dict[str, Any]:
+        """Експорт стану предиктора"""
+        return {
+            'models': self.models,
+            'scalers': self.scalers,
+            'feature_importance': self.feature_importance,
+            'model_performance': self.model_performance,
+            'ensemble_weights': self.ensemble_weights,
+            'feature_names': self.feature_names
+        }
+
+    def load_state(self, state_data: Dict[str, Any]):
+        """Завантаження стану предиктора"""
+        self.models = state_data.get('models', {})
+        self.scalers = state_data.get('scalers', {})
+        self.feature_importance = state_data.get('feature_importance', {})
+        self.model_performance = state_data.get('model_performance', {})
+        self.ensemble_weights = state_data.get('ensemble_weights', {})
+        self.feature_names = state_data.get('feature_names', [])
+        
+        # Встановлення прапорця натренованості
+        self.is_trained = len(self.models) > 0
+
+
     def update_actual_outcomes(self, outcomes: List[Dict[str, Any]]):
         """Оновлення фактичних результатів для моніторингу"""
         for outcome in outcomes:
