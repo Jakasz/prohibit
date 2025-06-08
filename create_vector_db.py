@@ -10,11 +10,39 @@ from tender_analysis_system import TenderAnalysisSystem
 from qdrant_client import QdrantClient
 from tqdm import tqdm
 from datetime import datetime
+from qdrant_client.http import models
+
+from vector_database import TenderVectorDB
 
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
+
+def fast_upsert_batch(self, points, batch_num: int = 0) -> int:
+    """Швидка вставка батчу БЕЗ очікування завершення"""
+    try:
+        print(f"📡 Швидка відправка батчу #{batch_num} з {len(points)} точок...")
+        
+        if not points:
+            print(f"❌ Порожній батч #{batch_num}")
+            return 0
+        
+        # 🔥 ШВИДКА відправка БЕЗ очікування
+        self.client.upsert(
+            collection_name=self.collection_name,
+            points=points,
+            wait=False,  # НЕ чекаємо завершення!
+            ordering=models.WriteOrdering.WEAK  # Слабка консистентність
+        )
+        
+        print(f"⚡ Батч #{batch_num} відправлено асинхронно")
+        return len(points)
+        
+    except Exception as e:
+        print(f"❌ Помилка швидкої відправки батчу #{batch_num}: {e}")
+        return 0
+
 
 def monitor_progress(system, start_count, interval=50000):
     """Моніторинг прогресу та розміру"""
@@ -100,86 +128,99 @@ def check_existing_collection(host="localhost", port=6333, collection_name="tend
     except:
         return False, {'exists': False}
 
+
+def process_file_fast(file_path, system, batch_size=5000, update_mode=True, fast_mode=True):
+    """ШВИДКА обробка файлу"""
+    print(f"⚡ ШВИДКА обробка: {file_path}")
+    
+    # Підрахунок записів
+    with open(file_path, 'r', encoding='utf-8') as f:
+        total_lines = sum(1 for _ in f)
+    print(f"📊 Всього записів: {total_lines:,}")
+    
+    # Швидке завантаження та обробка
+    data = []
+    errors = 0
+    
+    print("📥 Швидке завантаження в пам'ять...")
+    with open(file_path, 'r', encoding='utf-8') as f:
+        for line in tqdm(f, total=total_lines, desc="Завантаження", unit="рядків"):
+            try:
+                data.append(json.loads(line.strip()))
+            except Exception as e:
+                errors += 1
+                if errors <= 5:
+                    print(f"⚠️ JSON помилка: {e}")
+    
+    print(f"✅ Завантажено {len(data):,} записів (помилок: {errors})")
+    
+    # ШВИДКА індексація
+    print(f"⚡ ШВИДКА індексація з батчами по {batch_size}...")
+    stats = system.vector_db.index_tenders(
+        data,
+        update_mode=update_mode,
+        batch_size=batch_size
+    )
+    
+    return stats
+
+
+
 def create_optimized_vector_database(
     jsonl_files: list,
     categories_file: str = "categories.jsonl",
     collection_name: str = "tender_vectors",
-    batch_size: int = 2000,
+    batch_size: int = 5000,  # Збільшено
     max_records: int = None,
     monitor_interval: int = 50000,
-    update_mode: bool = None,  # None = запитати користувача
-    force_recreate: bool = False  # Примусове перестворення
+    update_mode: bool = None,
+    force_recreate: bool = False,
+    fast_mode: bool = True  # 🔥 НОВИЙ параметр
 ):
     """
-    Створення або оновлення оптимізованої векторної бази
-    
-    Args:
-        jsonl_files: список JSONL файлів для обробки
-        categories_file: файл з категоріями
-        collection_name: назва колекції в Qdrant
-        batch_size: розмір батчу для індексації
-        max_records: максимальна кількість записів (для тестування)
-        monitor_interval: інтервал моніторингу прогресу
-        update_mode: True - оновлення, False - перестворення, None - запитати
-        force_recreate: примусове перестворення без запиту
+    ШВИДКЕ створення векторної бази БЕЗ індексації
     """
     
     print("="*60)
-    print("🚀 ОПТИМІЗОВАНА ВЕКТОРНА БАЗА ТЕНДЕРІВ")
+    if fast_mode:
+        print("⚡ ШВИДКИЙ РЕЖИМ ЗАВАНТАЖЕННЯ")
+        print("   • Індексація ВИМКНЕНА")
+        print("   • Збільшений розмір батчу")
+        print("   • Асинхронна відправка")
+    else:
+        print("🐌 ЗВИЧАЙНИЙ РЕЖИМ З ІНДЕКСАЦІЄЮ")
     print("="*60)
     
-    # 1. Перевірка існування колекції
-    exists, collection_info = check_existing_collection(
-        collection_name=collection_name
-    )
+    # Перевірка існування колекції
+    exists, collection_info = check_existing_collection(collection_name=collection_name)
     
-    if exists:
+    if exists and not force_recreate:
         print(f"\n✅ Колекція '{collection_name}' вже існує:")
         print(f"   • Записів: {collection_info['points_count']:,}")
-        print(f"   • Статус: {collection_info['status']}")
-        print(f"   • Сегментів: {collection_info['segments_count']}")
         
-        # Визначення режиму роботи
-        if force_recreate:
-            update_mode = False
-            print("\n⚠️ УВАГА: Примусове перестворення колекції!")
-        elif update_mode is None:
-            print("\n🤔 Що робити з існуючою колекцією?")
-            print("1. Оновити (додати нові записи)")
-            print("2. Видалити і створити заново")
-            print("3. Скасувати операцію")
-            
-            choice = input("\nВаш вибір (1/2/3): ")
-            
-            if choice == '1':
-                update_mode = True
-                print("✅ Режим оновлення")
-            elif choice == '2':
-                update_mode = False
-                print("⚠️ Режим повного перестворення")
-            else:
+        if not update_mode:
+            choice = input("\n❓ Видалити і створити заново? (y/n): ")
+            if choice.lower() != 'y':
                 print("❌ Операція скасована")
                 return False
-        
-        # Видалення колекції якщо потрібно
+                
+        # Видалення якщо потрібно
         if not update_mode:
             try:
                 client = QdrantClient(host="localhost", port=6333)
                 client.delete_collection(collection_name)
                 print(f"🗑️ Видалено стару колекцію '{collection_name}'")
             except Exception as e:
-                print(f"❌ Помилка видалення колекції: {e}")
+                print(f"❌ Помилка видалення: {e}")
                 return False
-    else:
-        print(f"\nℹ️ Колекція '{collection_name}' не існує, буде створена нова")
-        update_mode = False
     
-    # 2. Ініціалізація системи
+    # Ініціалізація системи
     print("\n📦 Ініціалізація системи...")
     
-    # Відключаємо логування від transformers
+    # Тихий режим для transformers
     import logging
-    logging.getLogger("sentence_transformers").setLevel(logging.WARNING)
+    logging.getLogger("sentence_transformers").setLevel(logging.ERROR)
+    logging.getLogger("transformers").setLevel(logging.ERROR)
     
     system = TenderAnalysisSystem(
         categories_file=categories_file,
@@ -191,14 +232,19 @@ def create_optimized_vector_database(
         print("❌ Помилка ініціалізації!")
         return False
     
-    # Встановлення колекції
+    # # 🔥 ЗАСТОСОВУЄМО ШВИДКІ НАЛАШТУВАННЯ
+    # if fast_mode:
+    #     system.vector_db._init_collection = system.vector_db._init_collection.__func__(system.vector_db)
+    #     system.vector_db._upsert_batch = fast_upsert_batch.__get__(system.vector_db, TenderVectorDB)
+    #     print("⚡ Увімкнено швидкий режим завантаження")
+    
     system.vector_db.collection_name = collection_name
     
-    # 3. Початкова статистика
+    # Початкова статистика
     initial_count = system.vector_db.get_collection_size() if update_mode else 0
     print(f"\n📊 Початкова кількість записів: {initial_count:,}")
     
-    # 4. Обробка файлів
+    # Обробка файлів
     total_indexed = 0
     total_skipped = 0
     total_errors = 0
@@ -213,12 +259,13 @@ def create_optimized_vector_database(
             print(f"❌ Файл не знайдено: {jsonl_file}")
             continue
 
-        # Обробка файлу з урахуванням режиму
-        stats = process_file_with_stats(
+        # Швидка обробка файлу
+        stats = process_file_fast(
             jsonl_file, 
             system, 
             batch_size=batch_size,
-            update_mode=update_mode
+            update_mode=update_mode,
+            fast_mode=fast_mode
         )
         
         total_indexed += stats.get('indexed_count', 0)
@@ -227,15 +274,10 @@ def create_optimized_vector_database(
 
         print(f"\n✅ Файл оброблено:")
         print(f"   • Проіндексовано: {stats.get('indexed_count', 0):,}")
-        print(f"   • Пропущено дублікатів: {stats.get('skipped_count', 0):,}")
+        print(f"   • Пропущено: {stats.get('skipped_count', 0):,}")
         print(f"   • Помилок: {stats.get('error_count', 0):,}")
 
-    # 5. Оптимізація колекції
-    if total_indexed > 0:
-        print("\n🔧 Оптимізація колекції...")
-        system.vector_db.optimize_collection()
-    
-    # 6. Фінальна статистика
+    # Фінальна статистика
     final_count = system.vector_db.get_collection_size()
     processing_time = (datetime.now() - start_time).total_seconds()
     
@@ -249,19 +291,15 @@ def create_optimized_vector_database(
     print(f"⏭️ Пропущено дублікатів: {total_skipped:,}")
     print(f"❌ Помилок: {total_errors:,}")
     print(f"⏱️ Час обробки: {processing_time:.1f} сек")
-    print(f"🚀 Швидкість: {(total_indexed + total_skipped) / processing_time:.0f} записів/сек")
     
-    # Детальна статистика колекції
-    final_stats = system.vector_db.get_collection_stats()
-    if 'vectors_size_gb' in final_stats:
-        print(f"\n💾 Розмір бази даних:")
-        print(f"   • Вектори: {final_stats['vectors_size_gb']} ГБ")
-        print(f"   • Метадані: {final_stats['payload_size_gb']} ГБ")
-        print(f"   • Загальний розмір: {final_stats['estimated_total_gb']} ГБ")
-        
-        if final_stats['points_count'] > 0:
-            bytes_per_point = (final_stats['estimated_total_gb'] * 1024**3) / final_stats['points_count']
-            print(f"   • Байт на запис: {bytes_per_point:.0f}")
+    if total_indexed > 0:
+        print(f"🚀 Швидкість: {total_indexed / processing_time:.0f} записів/сек")
+    
+    if fast_mode:
+        print(f"\n⚠️  УВАГА:")
+        print(f"   🔥 Індексація ВИМКНЕНА!")
+        print(f"   📋 Для пошуку потрібно увімкнути індексацію")
+        print(f"   🛠️ Запустіть: python enable_indexing.py")
     
     print("="*60)
     
@@ -269,56 +307,31 @@ def create_optimized_vector_database(
 
 
 if __name__ == "__main__":
-    # ===== НАЛАШТУВАННЯ =====
+    # ===== НАЛАШТУВАННЯ ДЛЯ ШВИДКОГО ЗАВАНТАЖЕННЯ =====
     
-    # Ваші файли
     FILES = [
         "out_10_nodup.jsonl",
         "out_12_nodup.jsonl"
     ]
     
-    # Параметри
-    COLLECTION_NAME = "tender_vectors"  # Назва колекції
-    BATCH_SIZE = 1700                   # Розмір батчу
-    MONITOR_INTERVAL = 100000           # Інтервал моніторингу
+    # 🔥 ЗБІЛЬШЕНІ параметри для швидкості
+    COLLECTION_NAME = "tender_vectors"
+    BATCH_SIZE = 1850                    # Збільшено з 1700 до 5000
+    MONITOR_INTERVAL = 50000             # Рідше моніторинг
     
-    # Режими роботи (розкоментуйте потрібний)
-    UPDATE_MODE = None      # Запитати користувача
-    # UPDATE_MODE = True    # Завжди оновлювати
-    # UPDATE_MODE = False   # Завжди перестворювати
+    # Режим роботи
+    UPDATE_MODE = False                  # Повне перестворення
+    MAX_RECORDS = None                   # Всі записи
     
-    # Для тестування
-    MAX_RECORDS = None  # None = всі записи, або число для тесту
+    print("🚀 ШВИДКЕ ЗАВАНТАЖЕННЯ (БЕЗ ІНДЕКСАЦІЇ)")
+    print("="*50)
+    print("⚡ Колекція буде створена БЕЗ індексації")
+    print("⚡ Збільшений розмір батчу до 5000")
+    print("⚡ Асинхронна відправка батчів")
+    print("⚡ Після завантаження потрібно буде увімкнути індексацію")
+    print("="*50)
     
-    # ===== ІНФОРМАЦІЯ =====
-    
-    print("🔧 СИСТЕМА ВЕКТОРНОЇ БАЗИ ТЕНДЕРІВ")
-    print("📅 Версія: 2.0 (з підтримкою оновлення)")
-    
-    print(f"\n📁 Файли для обробки:")
-    for f in FILES:
-        if Path(f).exists():
-            size = Path(f).stat().st_size / (1024**3)
-            print(f"  ✅ {f} ({size:.2f} ГБ)")
-        else:
-            print(f"  ❌ {f} (не знайдено)")
-    
-    print(f"\n⚙️ Параметри:")
-    print(f"  - Колекція: {COLLECTION_NAME}")
-    print(f"  - Batch size: {BATCH_SIZE}")
-    print(f"  - Monitor interval: {MONITOR_INTERVAL:,}")
-    print(f"  - Max records: {MAX_RECORDS or 'Всі'}")
-    
-    if UPDATE_MODE is None:
-        print(f"  - Режим: буде визначено автоматично")
-    elif UPDATE_MODE:
-        print(f"  - Режим: оновлення (додавання нових)")
-    else:
-        print(f"  - Режим: повне перестворення")
-    
-    # ===== ЗАПУСК =====
-    
-    response = input("\n🚀 Почати обробку? (y/n): ")
+    response = input("\n🚀 Почати ШВИДКЕ завантаження? (y/n): ")
     if response.lower() == 'y':
         success = create_optimized_vector_database(
             jsonl_files=FILES,
@@ -326,12 +339,19 @@ if __name__ == "__main__":
             batch_size=BATCH_SIZE,
             max_records=MAX_RECORDS,
             monitor_interval=MONITOR_INTERVAL,
-            update_mode=UPDATE_MODE
+            update_mode=UPDATE_MODE,
+            fast_mode=True  # 🔥 НОВИЙ параметр
         )
         
         if success:
-            print("\n✅ Операція завершена успішно!")
+            print("\n" + "="*60)
+            print("🎉 ШВИДКЕ ЗАВАНТАЖЕННЯ ЗАВЕРШЕНО!")
+            print("="*60)
+            print("⚠️  УВАГА: Індексація ВИМКНЕНА!")
+            print("📋 Для увімкнення індексації запустіть:")
+            print("   python enable_indexing.py")
+            print("="*60)
         else:
-            print("\n❌ Операція завершена з помилками")
+            print("\n❌ Швидке завантаження завершено з помилками")
     else:
         print("❌ Операція скасована")

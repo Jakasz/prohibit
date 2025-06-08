@@ -1,7 +1,7 @@
 import hashlib
 
-filename = "out_12.jsonl"  # замініть на ваш шлях до файлу
-output_file = "out_12_nodup.jsonl"
+filename = "out_10.jsonl"  # замініть на ваш шлях до файлу
+output_file = "out_10_nodup.jsonl"
 seen_hashes = {}
 duplicates = []
 
