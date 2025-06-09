@@ -13,6 +13,7 @@ from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
+import json
 
 
 class TenderVectorDB:
@@ -103,32 +104,26 @@ class TenderVectorDB:
         else:
             self.logger.info(f"🔧 Створення колекції '{self.collection_name}' БЕЗ індексації...")
             try:
+                # Створюємо колекцію без HNSW індексу для швидкого завантаження
                 self.client.create_collection(
                     collection_name=self.collection_name,
                     vectors_config=models.VectorParams(
                         size=768,
                         distance=models.Distance.COSINE,
-                        on_disk=True
+                        on_disk=True  # Зберігаємо на диску
                     ),
+                    # Налаштування для швидкого завантаження БЕЗ індексації
                     optimizers_config=models.OptimizersConfigDiff(
-                        default_segment_number=1,  # Мінімум сегментів
-                        max_segment_size=2000000,  # Великі сегменти (2M записів)
-                        memmap_threshold=50000,    # Більший поріг для memmap
-                        indexing_threshold=999999999,  # 🔥 ВІДКЛЮЧАЄМО ІНДЕКСАЦІЮ
-                        flush_interval_sec=120,    # Рідше скидання на диск
-                        max_optimization_threads=1
+                        default_segment_number=4,  # Мінімум сегментів
+                        max_segment_size=3000000,  # Дуже великі сегменти (5M записів)
+                        memmap_threshold=100000,   # Великий поріг для memmap
+                        indexing_threshold=99999999,  # ВІДКЛЮЧАЄМО автоматичну індексацію
+                        flush_interval_sec=300,    # Рідше скидання на диск (5 хв)
+                        max_optimization_threads=8 # Мінімум потоків
                     ),
-                    hnsw_config=models.HnswConfigDiff(
-                        m=0,  # 🔥 ВІДКЛЮЧАЄМО HNSW ІНДЕКС
-                        ef_construct=100,
-                        full_scan_threshold=999999999,  # Завжди full scan
-                        max_indexing_threads=0,  # Без потоків індексації
-                        on_disk=True,
-                        payload_m=16
-                    ),
-                    # ❌ ВИМКНУЛИ quantization для швидшого завантаження
-                    # quantization_config=None,
-                    shard_number=1,
+                    # НЕ передаємо hnsw_config взагалі - буде використано дефолтні налаштування
+                    # які будуть змінені при увімкненні індексації
+                    shard_number=2,
                     replication_factor=1
                 )
                 
@@ -138,6 +133,7 @@ class TenderVectorDB:
             except Exception as e:
                 self.logger.error(f"❌ Помилка створення колекції: {e}")
                 raise
+
 
     def _create_payload_indexes(self):
         """Створення індексів тільки для критичних полів"""
@@ -191,8 +187,12 @@ class TenderVectorDB:
         return text
     
     def _generate_content_hash(self, item: Dict) -> str:
-        """Генерація короткого хешу"""
-        key_str = f"{item.get('F_TENDERNUMBER', '')}{item.get('EDRPOU', '')}{item.get('F_ITEMNAME', '')}{item.get('F_INDUSTRYNAME', '')}"
+        """Генерація короткого хешу на основі всіх полів (крім службових), null замінюються на ''"""
+        # Копія item без службових полів
+        exclude_fields = {'content_hash', 'created_at'}
+        filtered = {k: (v if v is not None else '') for k, v in item.items() if k not in exclude_fields}
+        # Серіалізуємо у json-рядок з сортуванням ключів
+        key_str = json.dumps(filtered, sort_keys=True, ensure_ascii=False)
         return hashlib.md5(key_str.encode('utf-8')).hexdigest()[:16]  # Коротший хеш
 
     
@@ -271,20 +271,25 @@ class TenderVectorDB:
         
         if not tender_number:
             self.logger.debug(f"⚠️ Пустий F_TENDERNUMBER, пропускаємо запис")
-            return None
+            print (f"⚠️ Пустий F_TENDERNUMBER для тендера {tender_number}")
+            return ""
         
         if not edrpou:
             self.logger.debug(f"⚠️ Пустий EDRPOU для тендера {tender_number}")
-            return None
+            print (f"⚠️ Пустий EDRPOU для тендера {tender_number}")
+            return ""
         
         if not item_name:
             self.logger.debug(f"⚠️ Пустий F_ITEMNAME для тендера {tender_number}")
-            return None
+            print (f"⚠️ Пустий F_ITEMNAME для тендера {tender_number}")
+            return ""
         
         # 2. Створення тексту для ембедингу
-        tender_name = item.get('F_TENDERNAME', '')
-        detail_name = item.get('F_DETAILNAME', '')
-        combined_text = f"{item_name} {tender_name} {detail_name}".strip()
+        item_name = item.get('F_ITEMNAME') or ''
+        tender_name = item.get('F_TENDERNAME') or ''
+        detail_name = item.get('F_DETAILNAME') or ''
+        industry_name = item.get('F_INDUSTRYNAME') or ''
+        combined_text = f"{item_name} {edrpou} {tender_number}{industry_name}".strip()
         
         if len(combined_text) < 3:
             self.logger.debug(f"⚠️ Надто короткий текст ({len(combined_text)} символів) для тендера {tender_number}")
@@ -326,7 +331,7 @@ class TenderVectorDB:
                 # Основні ідентифікатори
                 'tender_number': tender_number,
                 'edrpou': edrpou,
-                'owner_name': item.get('OWNER_NAME', ''),
+                'owner_name': item.get('OWNER_NAME') or '',
                 
                 # Інформація про товар/послугу
                 'item_name': item_name,
@@ -334,26 +339,26 @@ class TenderVectorDB:
                 'detail_name': detail_name,
                 
                 # Постачальник
-                'supplier_name': item.get('supp_name', ''),
+                'supplier_name': item.get('supp_name') or '',
                 
                 # Класифікація
-                'industry': item.get('F_INDUSTRYNAME', ''),
+                'industry': item.get('F_INDUSTRYNAME') or '',
                 'cpv': int(item.get('CPV', 0)) if item.get('CPV') else 0,
                 
                 # Фінансові показники з валідацією
                 'budget': 0.0,
                 'quantity': 0.0,
                 'price': 0.0,
-                'currency': item.get('F_TENDERCURRENCY', 'UAH'),
+                'currency': item.get('F_TENDERCURRENCY') or 'UAH',
                 'currency_rate': 1.0,
                 
                 # Результат та дати
                 'won': bool(item.get('WON', False)),
-                'date_end': item.get('DATEEND', ''),
-                'extraction_date': item.get('EXTRACTION_DATE', ''),
+                'date_end': item.get('DATEEND') or '',
+                'extraction_date': item.get('EXTRACTION_DATE') or '',
                 
                 # Системні поля
-                'original_id': item.get('ID', ''),
+                'original_id': item.get('ID') or '',
                 'created_at': datetime.now().isoformat(),
                 'content_hash': self._generate_content_hash(item)
             }
@@ -472,16 +477,45 @@ class TenderVectorDB:
             self.logger.error(f"❌ Помилка оптимізації: {e}")
 
 
+    def _create_embeddings_batch(self, texts: List[str], batch_size: int = 128) -> List[Optional[np.ndarray]]:
+        """Batch-інференс ембеддингів для списку текстів (максимальна швидкість на GPU)"""
+        results = []
+        if not texts:
+            return results
+        try:
+            # Відключаємо вивід при енкодингу
+            with open(os.devnull, 'w') as devnull:
+                old_stdout = sys.stdout
+                sys.stdout = devnull
+                embeddings = self.embedding_model.encode(
+                    texts,
+                    show_progress_bar=False,
+                    batch_size=batch_size,
+                    normalize_embeddings=True
+                )
+                sys.stdout = old_stdout
+            # Перетворюємо на список np.ndarray
+            if isinstance(embeddings, np.ndarray):
+                results = [embeddings[i] for i in range(embeddings.shape[0])]
+            else:
+                results = list(embeddings)
+        except Exception as e:
+            self.logger.debug(f"❌ Помилка batch-інференсу ембеддингів: {e}")
+            results = [None] * len(texts)
+        return results
+
     def index_tenders(self, 
                 historical_data: List[Dict], 
                 update_mode: bool = True,
-                batch_size: int = 1000) -> Dict[str, Any]:
+                batch_size: int = 1000,
+                embedding_batch_size: int = 128) -> Dict[str, Any]:
         """
-        Індексація тендерів у векторній базі з ДЕТАЛЬНИМ логуванням
+        Індексація тендерів у векторній базі з batch-інференсом ембеддингів
         """
         print(f"\n🔄 Індексація {len(historical_data):,} записів")
         print(f"📋 Режим: {'Оновлення' if update_mode else 'Повна переіндексація'}")
         print(f"📦 Розмір батчу: {batch_size}")
+        print(f"⚡ Batch-інференс ембеддингів: {embedding_batch_size}")
         
         start_time = datetime.now()
         results = {
@@ -554,81 +588,162 @@ class TenderVectorDB:
         points_prepared = 0
         points_added_to_batch = 0
         
-        for i, item in enumerate(new_items):
-            points_prepared += 1  # ДОДАНО: рахуємо всі оброблені записи
-            try:
-                # ДОДАНО: детальна перевірка створення точки
-                point = self._prepare_point(item)
-                if point is None:
-                    print(f"⚠️ _prepare_point повернув None для запису {i}")
+        i = 0
+        while i < len(new_items):
+            # Формуємо підбатч для ембеддингів
+            batch_items = new_items[i:i+embedding_batch_size]
+            texts = []
+            valid_indices = []
+            for idx, item in enumerate(batch_items):
+                tender_number = item.get('F_TENDERNUMBER', '')
+                edrpou = item.get('EDRPOU', '')
+                item_name = item.get('F_ITEMNAME', '')
+                tender_name = item.get('F_TENDERNAME', '')
+                detail_name = item.get('F_DETAILNAME', '')
+                combined_text = f"{item_name} {tender_name} {detail_name}".strip()
+                if not tender_number or not edrpou or not item_name or len(combined_text) < 3:
                     continue
-                
-                points_to_upsert.append(point)
-                points_added_to_batch += 1  # ДОДАНО: рахуємо додані до батчу
-                
-                # Виконання батчу
-                if len(points_to_upsert) >= batch_size:
-                    batch_num += 1
-                    
-                    # ДОДАНО: логування перед відправкою
-                    print(f"\n🔀 Батч #{batch_num}: підготовлено {points_prepared} записів, у батчі {points_added_to_batch} точок")
-                    
-                    batch_start = datetime.now()
-                    success_count = self._upsert_batch(points_to_upsert, batch_num)
-                    batch_time = (datetime.now() - batch_start).total_seconds()
-                    
-                    # ДОДАНО: детальна статистика батчу
-                    batch_stat = {
-                        'batch_num': batch_num,
-                        'points_prepared': len(points_to_upsert),
-                        'points_uploaded': success_count,
-                        'points_failed': len(points_to_upsert) - success_count,
-                        'batch_time': batch_time
+                texts.append(combined_text)
+                valid_indices.append(idx)
+            # Batch-інференс ембеддингів
+            embeddings = self._create_embeddings_batch(texts, batch_size=embedding_batch_size)
+            for rel_idx, emb in enumerate(embeddings):
+                item = batch_items[valid_indices[rel_idx]]
+                points_prepared += 1
+                if emb is None or not isinstance(emb, np.ndarray) or emb.shape[0] != 768 or np.isnan(emb).any() or np.isinf(emb).any():
+                    point_creation_errors += 1
+                    if point_creation_errors <= 10:
+                        print(f"❌ Помилка створення ембедингу для запису {i+valid_indices[rel_idx]}")
+                    continue
+                # ...створення метаданих як у _prepare_point...
+                try:
+                    metadata = {
+                        'tender_number': item.get('F_TENDERNUMBER', ''),
+                        'edrpou': item.get('EDRPOU', ''),
+                        'owner_name': item.get('OWNER_NAME') or '',
+                        'item_name': item.get('F_ITEMNAME', ''),
+                        'tender_name': item.get('F_TENDERNAME', ''),
+                        'detail_name': item.get('F_DETAILNAME', ''),
+                        'supplier_name': item.get('supp_name') or '',
+                        'industry': item.get('F_INDUSTRYNAME') or '',
+                        'cpv': int(item.get('CPV', 0)) if item.get('CPV') else 0,
+                        'budget': 0.0,
+                        'quantity': 0.0,
+                        'price': 0.0,
+                        'currency': item.get('F_TENDERCURRENCY') or 'UAH',
+                        'currency_rate': 1.0,
+                        'won': bool(item.get('WON', False)),
+                        'date_end': item.get('DATEEND') or '',
+                        'extraction_date': item.get('EXTRACTION_DATE') or '',
+                        'original_id': item.get('ID') or '',
+                        'created_at': datetime.now().isoformat(),
+                        'content_hash': self._generate_content_hash(item)
                     }
-                    results['batch_stats'].append(batch_stat)
-                    
-                    print(f"✅ Батч #{batch_num}: відправлено {success_count}/{len(points_to_upsert)} точок за {batch_time:.2f}с")
-                    
-                    results['indexed_count'] += success_count
-                    results['error_count'] += len(points_to_upsert) - success_count
-                    points_to_upsert = []
-                    points_added_to_batch = 0  # ДОДАНО: скидаємо лічильник батчу
-                    
-                    # Статистика кожні 10 батчів
-                    if batch_num % 10 == 0:
-                        elapsed = (datetime.now() - start_time).total_seconds()
-                        speed = results['indexed_count'] / elapsed if elapsed > 0 else 0
-                        pbar.set_postfix(
-                            batches=batch_num,
-                            indexed=f"{results['indexed_count']:,}",
-                            speed=f"{speed:.0f}/с"
-                        )
-                
-                pbar.update(1)
-                
-            except Exception as e:
-                point_creation_errors += 1
-                results['error_count'] += 1
-                
-                # ДОДАНО: логування помилок створення точок
-                if point_creation_errors <= 10:
-                    print(f"❌ Помилка створення точки для запису {i}: {e}")
-                    # Додаткова інформація про проблемний запис
-                    print(f"   Тендер: {item.get('F_TENDERNUMBER', 'N/A')}")
-                    print(f"   ЄДРПОУ: {item.get('EDRPOU', 'N/A')}")
-                    print(f"   Товар: {item.get('F_ITEMNAME', 'N/A')[:50]}...")
-                
-                pbar.update(1)
-        
+                    try:
+                        budget = item.get('ITEM_BUDGET')
+                        if budget is not None and str(budget).strip():
+                            metadata['budget'] = float(budget)
+                    except (ValueError, TypeError):
+                        pass
+                    try:
+                        quantity = item.get('F_qty')
+                        if quantity is not None and str(quantity).strip():
+                            metadata['quantity'] = float(quantity)
+                    except (ValueError, TypeError):
+                        pass
+                    try:
+                        price = item.get('F_price')
+                        if price is not None and str(price).strip():
+                            metadata['price'] = float(price)
+                    except (ValueError, TypeError):
+                        pass
+                    try:
+                        rate = item.get('F_TENDERCURRENCYRATE')
+                        if rate is not None and str(rate).strip():
+                            metadata['currency_rate'] = float(rate)
+                    except (ValueError, TypeError):
+                        pass
+                    group_key_parts = [
+                        str(metadata['edrpou']),
+                        str(metadata['industry']),
+                        str(metadata['item_name']),
+                        str(metadata['owner_name']),
+                        str(metadata['tender_name'])
+                    ]
+                    if item.get('CPV'):
+                        group_key_parts.append(str(item.get('CPV')))
+                    metadata['group_key'] = '-'.join(group_key_parts)
+                    # Категоризація (якщо доступна)
+                    if hasattr(self, 'category_manager') and self.category_manager:
+                        try:
+                            categories = self.category_manager.categorize_item(metadata['item_name'])
+                            metadata['primary_category'] = categories[0][0] if categories else 'unknown'
+                            metadata['all_categories'] = [cat[0] for cat in categories[:3]]
+                            metadata['category_confidence'] = categories[0][1] if categories else 0.0
+                        except Exception as e:
+                            self.logger.debug(f"Помилка категоризації для {metadata['tender_number']}: {e}")
+                            metadata['primary_category'] = 'unknown'
+                            metadata['all_categories'] = []
+                            metadata['category_confidence'] = 0.0
+                    else:
+                        metadata['primary_category'] = 'unknown'
+                        metadata['all_categories'] = []
+                        metadata['category_confidence'] = 0.0
+                    # Генерація ID
+                    point_id = int(hashlib.md5(metadata['content_hash'].encode()).hexdigest()[:8], 16)
+                    point = models.PointStruct(
+                        id=point_id,
+                        vector=emb.tolist(),
+                        payload=metadata
+                    )
+                    points_to_upsert.append(point)
+                    points_added_to_batch += 1
+                except Exception as e:
+                    point_creation_errors += 1
+                    if point_creation_errors <= 10:
+                        print(f"❌ Помилка створення точки для запису {i+valid_indices[rel_idx]}: {e}")
+                    continue
+            # Відправка батчів рівно по batch_size
+            while len(points_to_upsert) >= batch_size:
+                batch_num += 1
+                batch_points = points_to_upsert[:batch_size]
+                print(f"\n🔀 Батч #{batch_num}: підготовлено {points_prepared} записів, у батчі {len(batch_points)} точок")
+                batch_start = datetime.now()
+                success_count = self._upsert_batch(batch_points, batch_num)
+                batch_time = (datetime.now() - batch_start).total_seconds()
+                batch_stat = {
+                    'batch_num': batch_num,
+                    'points_prepared': len(batch_points),
+                    'points_uploaded': success_count,
+                    'points_failed': len(batch_points) - success_count,
+                    'batch_time': batch_time
+                }
+                results['batch_stats'].append(batch_stat)
+                print(f"✅ Батч #{batch_num}: відправлено {success_count}/{len(batch_points)} точок за {batch_time:.2f}с")
+                results['indexed_count'] += success_count
+                results['error_count'] += len(batch_points) - success_count
+                # Додаємо лог по кількості записів у базі
+                current_count = self.get_collection_size()
+                print(f"📊 Поточна кількість записів у базі після батчу #{batch_num}: {current_count}")
+                points_to_upsert = points_to_upsert[batch_size:]
+                points_added_to_batch = len(points_to_upsert)
+                if batch_num % 10 == 0:
+                    elapsed = (datetime.now() - start_time).total_seconds()
+                    speed = results['indexed_count'] / elapsed if elapsed > 0 else 0
+                    pbar.set_postfix(
+                        batches=batch_num,
+                        indexed=f"{results['indexed_count']:,}",
+                        speed=f"{speed:.0f}/с"
+                    )
+            pbar.update(len(batch_items))
+            i += embedding_batch_size
         # Останній батч
         if points_to_upsert:
             batch_num += 1
             print(f"\n🔀 Останній батч #{batch_num}: {len(points_to_upsert)} точок")
-            
             batch_start = datetime.now()
             success_count = self._upsert_batch(points_to_upsert, batch_num)
             batch_time = (datetime.now() - batch_start).total_seconds()
-            
             batch_stat = {
                 'batch_num': batch_num,
                 'points_prepared': len(points_to_upsert),
@@ -637,12 +752,9 @@ class TenderVectorDB:
                 'batch_time': batch_time
             }
             results['batch_stats'].append(batch_stat)
-            
             print(f"✅ Останній батч: відправлено {success_count}/{len(points_to_upsert)} точок")
-            
             results['indexed_count'] += success_count
             results['error_count'] += len(points_to_upsert) - success_count
-        
         pbar.close()
         
         # Детальна статистика батчів
@@ -824,7 +936,7 @@ class TenderVectorDB:
                 if len(similar_tenders) >= limit:
                     break
                 
-                # Уникаємо повторень того ж тендеру
+                # Уникаємо повторень того ж тендера
                 if (result.payload.get('tender_number') == query_item.get('F_TENDERNUMBER') and
                     result.payload.get('edrpou') == query_item.get('EDRPOU')):
                     continue

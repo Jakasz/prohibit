@@ -53,35 +53,35 @@ def enable_indexing(collection_name: str = "tender_vectors",
     print(f"\n🚀 Початок індексації: {start_time.strftime('%H:%M:%S')}")
     
     try:
-        # Крок 1: Увімкнення HNSW індексу
-        print("\n📈 Крок 1: Увімкнення HNSW індексу...")
-        client.update_collection(
-            collection_name=collection_name,
-            hnsw_config=models.HnswConfigDiff(
-                m=16,                          # Увімкнути граф
-                ef_construct=200,              # Якісна побудова
-                full_scan_threshold=10000,     # Поріг для повного сканування
-                max_indexing_threads=4,        # Більше потоків
-                on_disk=True,                  # Зберігати на диску
-                payload_m=16
-            )
-        )
-        print("✅ HNSW індекс увімкнено")
-        
-        # Крок 2: Налаштування оптимізаторів
-        print("\n⚙️ Крок 2: Оптимізація параметрів...")
+        # Крок 1: Налаштування оптимізаторів для швидшої індексації
+        print("\n⚙️ Крок 1: Оптимізація параметрів для індексації...")
         client.update_collection(
             collection_name=collection_name,
             optimizers_config=models.OptimizersConfigDiff(
-                default_segment_number=4,      # Більше сегментів
+                default_segment_number=4,      # Більше сегментів для паралельності
                 max_segment_size=500000,       # Середні сегменти
                 memmap_threshold=20000,        # Стандартний поріг
-                indexing_threshold=50000,      # Поріг індексації
+                indexing_threshold=20000,      # УВІМКНУТИ автоматичну індексацію
                 flush_interval_sec=30,         # Частіше скидання
-                max_optimization_threads=2    # Потоки оптимізації
+                max_optimization_threads=4     # Більше потоків для оптимізації
             )
         )
-        print("✅ Оптимізатори налаштовано")
+        print("✅ Оптимізатори налаштовано для індексації")
+        
+        # Крок 2: Увімкнення HNSW індексу
+        print("\n📈 Крок 2: Увімкнення HNSW індексу...")
+        client.update_collection(
+            collection_name=collection_name,
+            hnsw_config=models.HnswConfigDiff(
+                m=16,                          # Стандартне значення для графу
+                ef_construct=200,              # Якісна побудова
+                full_scan_threshold=10000,     # Поріг для повного сканування
+                max_indexing_threads=0,        # 0 = всі доступні ядра
+                on_disk=True,                  # Зберігати на диску
+                payload_m=16                   # Індексація payload
+            )
+        )
+        print("✅ HNSW індекс увімкнено")
         
         # Крок 3: Увімкнення квантизації (опціонально)
         print("\n🗜️ Крок 3: Увімкнення квантизації...")
@@ -100,7 +100,7 @@ def enable_indexing(collection_name: str = "tender_vectors",
         except Exception as e:
             print(f"⚠️ Квантизацію не вдалося увімкнути: {e}")
         
-        # Крок 4: Створення додаткових індексів
+        # Крок 4: Створення додаткових індексів для payload
         print("\n📋 Крок 4: Створення додаткових індексів...")
         additional_indexes = [
             ("industry", models.PayloadSchemaType.KEYWORD),
@@ -117,53 +117,58 @@ def enable_indexing(collection_name: str = "tender_vectors",
                     collection_name=collection_name,
                     field_name=field_name,
                     field_schema=field_type,
-                    wait=False
+                    wait=False  # Асинхронне створення
                 )
                 print(f"  ✅ Індекс для {field_name}")
             except Exception as e:
                 print(f"  ⚠️ Індекс для {field_name}: {e}")
         
-        # Крок 5: Моніторинг прогресу індексації
-        print(f"\n⏳ Крок 5: Моніторинг індексації...")
+        # Крок 5: Форсування індексації
+        print(f"\n🔨 Крок 5: Форсування індексації...")
         print("   (Це може зайняти 30-60 хвилин)")
         
-        last_indexed = 0
+        # Оновлюємо колекцію для запуску індексації
+        client.update_collection(
+            collection_name=collection_name,
+            optimizers_config=models.OptimizersConfigDiff(
+                indexing_threshold=1000  # Низький поріг для швидкого початку
+            )
+        )
+        
+        # Моніторинг прогресу
+        print("\n⏳ Моніторинг індексації...")
+        last_status = None
         stable_count = 0
+        check_interval = 30  # секунди
         
         while True:
-            time.sleep(30)  # Перевірка кожні 30 секунд
+            time.sleep(check_interval)
             
             try:
                 info = client.get_collection(collection_name)
                 
-                # Отримуємо інформацію про індексацію
-                if hasattr(info, 'points_count') and hasattr(info, 'indexed_vectors_count'):
-                    total = info.points_count
-                    indexed = getattr(info, 'indexed_vectors_count', total)
+                # Статус колекції
+                current_status = info.status
+                
+                if current_status != last_status:
+                    print(f"   📊 Статус: {current_status}")
+                    last_status = current_status
+                    stable_count = 0
                 else:
-                    # Fallback для старіших версій
-                    total = info.points_count
-                    indexed = total  # Припускаємо що все проіндексовано
-                
-                progress = (indexed / total * 100) if total > 0 else 100
-                elapsed = (datetime.now() - start_time).total_seconds() / 60
-                
-                print(f"   📈 Прогрес: {indexed:,}/{total:,} ({progress:.1f}%) | Час: {elapsed:.1f} хв")
+                    stable_count += 1
                 
                 # Перевірка завершення
-                if indexed == total:
-                    if indexed == last_indexed:
-                        stable_count += 1
-                        if stable_count >= 3:  # Стабільно 1.5 хвилини
-                            break
-                    else:
-                        stable_count = 0
+                if current_status == "green" and stable_count >= 3:
+                    print("   ✅ Індексація завершена!")
+                    break
                 
-                last_indexed = indexed
+                # Час
+                elapsed = (datetime.now() - start_time).total_seconds() / 60
+                print(f"   ⏱️ Пройшло: {elapsed:.1f} хв")
                 
                 # Тайм-аут (2 години)
                 if elapsed > 120:
-                    print("⚠️ Тайм-аут досягнуто, але індексація може продовжуватися")
+                    print("⚠️ Тайм-аут досягнуто, індексація може продовжуватися в фоні")
                     break
                     
             except Exception as e:
@@ -193,10 +198,18 @@ def enable_indexing(collection_name: str = "tender_vectors",
         print("🎉 ІНДЕКСАЦІЯ ЗАВЕРШЕНА!")
         print("="*60)
         print(f"📊 Записів у колекції: {final_info.points_count:,}")
+        print(f"📊 Статус колекції: {final_info.status}")
         print(f"⏱️ Загальний час: {total_time:.1f} хвилин")
         print(f"🔍 Час пошуку: {search_time:.1f} мс")
         print(f"📈 Знайдено результатів: {len(results)}")
-        print(f"✅ Векторна база готова до використання!")
+        
+        if search_time < 100:
+            print(f"✅ Векторна база працює ВІДМІННО!")
+        elif search_time < 500:
+            print(f"✅ Векторна база працює добре")
+        else:
+            print(f"⚠️ Векторна база працює повільно")
+        
         print("="*60)
         
         return True
@@ -218,7 +231,19 @@ def check_indexing_status(collection_name: str = "tender_vectors"):
         print(f"   • Записів: {info.points_count:,}")
         print(f"   • Статус: {info.status}")
         
+        # Перевірка конфігурації
+        print(f"\n⚙️ Конфігурація:")
+        if hasattr(info.config, 'optimizer_config'):
+            opt_config = info.config.optimizer_config
+            print(f"   • Поріг індексації: {opt_config.indexing_threshold}")
+        
+        if hasattr(info.config, 'hnsw_config'):
+            hnsw_config = info.config.hnsw_config
+            print(f"   • HNSW m: {hnsw_config.m}")
+            print(f"   • HNSW ef_construct: {hnsw_config.ef_construct}")
+        
         # Тест швидкості пошуку
+        print(f"\n🧪 Тест пошуку...")
         test_vector = [0.1] * 768
         start_time = time.time()
         

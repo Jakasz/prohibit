@@ -32,7 +32,7 @@ def fast_upsert_batch(self, points, batch_num: int = 0) -> int:
         self.client.upsert(
             collection_name=self.collection_name,
             points=points,
-            wait=False,  # НЕ чекаємо завершення!
+            wait=True,  # НЕ чекаємо завершення!
             ordering=models.WriteOrdering.WEAK  # Слабка консистентність
         )
         
@@ -170,12 +170,12 @@ def create_optimized_vector_database(
     jsonl_files: list,
     categories_file: str = "categories.jsonl",
     collection_name: str = "tender_vectors",
-    batch_size: int = 5000,  # Збільшено
+    batch_size: int = 5000,
     max_records: int = None,
     monitor_interval: int = 50000,
     update_mode: bool = None,
     force_recreate: bool = False,
-    fast_mode: bool = True  # 🔥 НОВИЙ параметр
+    fast_mode: bool = True
 ):
     """
     ШВИДКЕ створення векторної бази БЕЗ індексації
@@ -198,11 +198,12 @@ def create_optimized_vector_database(
         print(f"\n✅ Колекція '{collection_name}' вже існує:")
         print(f"   • Записів: {collection_info['points_count']:,}")
         
-        if not update_mode:
+        if update_mode is None:
             choice = input("\n❓ Видалити і створити заново? (y/n): ")
             if choice.lower() != 'y':
                 print("❌ Операція скасована")
                 return False
+            update_mode = False
                 
         # Видалення якщо потрібно
         if not update_mode:
@@ -232,12 +233,7 @@ def create_optimized_vector_database(
         print("❌ Помилка ініціалізації!")
         return False
     
-    # # 🔥 ЗАСТОСОВУЄМО ШВИДКІ НАЛАШТУВАННЯ
-    # if fast_mode:
-    #     system.vector_db._init_collection = system.vector_db._init_collection.__func__(system.vector_db)
-    #     system.vector_db._upsert_batch = fast_upsert_batch.__get__(system.vector_db, TenderVectorDB)
-    #     print("⚡ Увімкнено швидкий режим завантаження")
-    
+    # Встановлюємо правильну назву колекції
     system.vector_db.collection_name = collection_name
     
     # Початкова статистика
@@ -259,12 +255,12 @@ def create_optimized_vector_database(
             print(f"❌ Файл не знайдено: {jsonl_file}")
             continue
 
-        # Швидка обробка файлу
+        # Обробка файлу
         stats = process_file_fast(
             jsonl_file, 
             system, 
             batch_size=batch_size,
-            update_mode=update_mode,
+            update_mode=update_mode if update_mode is not None else True,
             fast_mode=fast_mode
         )
         
@@ -306,22 +302,23 @@ def create_optimized_vector_database(
     return True
 
 
+
 if __name__ == "__main__":
     # ===== НАЛАШТУВАННЯ ДЛЯ ШВИДКОГО ЗАВАНТАЖЕННЯ =====
     
     FILES = [
-        "out_10_nodup.jsonl",
-        "out_12_nodup.jsonl"
+        "out_10_nodup_nonull.jsonl",
+        "out_12_nodup_nonull.jsonl"
     ]
     
     # 🔥 ЗБІЛЬШЕНІ параметри для швидкості
     COLLECTION_NAME = "tender_vectors"
-    BATCH_SIZE = 1850                    # Збільшено з 1700 до 5000
-    MONITOR_INTERVAL = 50000             # Рідше моніторинг
+    BATCH_SIZE = 1850                   
+    MONITOR_INTERVAL = 50000           
     
     # Режим роботи
-    UPDATE_MODE = False                  # Повне перестворення
-    MAX_RECORDS = None                   # Всі записи
+    UPDATE_MODE = None                  # Повне перестворення
+    MAX_RECORDS = None                  # Всі записи
     
     print("🚀 ШВИДКЕ ЗАВАНТАЖЕННЯ (БЕЗ ІНДЕКСАЦІЇ)")
     print("="*50)
