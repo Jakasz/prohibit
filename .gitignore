@@ -42,3 +42,6 @@ out_10_nodup.jsonl
 out_12_nodup.jsonl
 out_10_nodup_nonull.jsonl
 out_12_nodup_nonull.jsonl
+/data
+/other_files
+test_profiles.py

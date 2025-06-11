@@ -115,7 +115,7 @@ class TenderAnalysisSystem:
             from supplier_profiler import SupplierProfiler  # Буде створено далі
             self.supplier_profiler = SupplierProfiler(
                 categories_manager=self.categories_manager,
-                # embedding_model=self.embedding_model
+                vector_db=self.vector_db
             )
             
             # 4. Ініціалізація аналізатора конкуренції

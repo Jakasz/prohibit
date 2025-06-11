@@ -508,14 +508,17 @@ class TenderVectorDB:
                 historical_data: List[Dict], 
                 update_mode: bool = True,
                 batch_size: int = 1000,
-                embedding_batch_size: int = 128) -> Dict[str, Any]:
+                embedding_batch_size: int = 128,
+                prepare_pool_size: int = 100_000) -> Dict[str, Any]:
         """
         Індексація тендерів у векторній базі з batch-інференсом ембеддингів
+        Тепер підготовка points йде блоками по prepare_pool_size, а вставка у Qdrant по batch_size
         """
         print(f"\n🔄 Індексація {len(historical_data):,} записів")
         print(f"📋 Режим: {'Оновлення' if update_mode else 'Повна переіндексація'}")
-        print(f"📦 Розмір батчу: {batch_size}")
+        print(f"📦 Розмір батчу (Qdrant): {batch_size}")
         print(f"⚡ Batch-інференс ембеддингів: {embedding_batch_size}")
+        print(f"🧮 Пул підготовки points: {prepare_pool_size}")
         
         start_time = datetime.now()
         results = {
@@ -525,14 +528,13 @@ class TenderVectorDB:
             'skipped_count': 0,
             'error_count': 0,
             'processing_time': 0,
-            'batch_stats': []  # ДОДАНО для відстеження батчів
+            'batch_stats': []
         }
         
         if not update_mode:
             try:
                 self.client.delete_collection(self.collection_name)
                 self.logger.info("🗑️ Видалено стару колекцію")
-                # Перестворюємо колекцію
                 self._init_collection()
                 self.logger.info("✅ Колекція перестворена")
             except Exception as e:
@@ -542,7 +544,6 @@ class TenderVectorDB:
 
 
         
-        # Отримання існуючих хешів
         existing_hashes = set()
         if update_mode:
             load_start = datetime.now()
@@ -550,7 +551,6 @@ class TenderVectorDB:
             load_time = (datetime.now() - load_start).total_seconds()
             print(f"⏱️ Час завантаження хешів: {load_time:.1f} сек\n")
         
-        # Перевірка на дублікати
         new_items = []
         print("🔍 Перевірка на дублікати...")
         
@@ -579,7 +579,6 @@ class TenderVectorDB:
             ncols=100
         )
         
-        # Обробка батчами з ДЕТАЛЬНИМ логуванням
         points_to_upsert = []
         batch_num = 0
         point_creation_errors = 0
@@ -703,11 +702,48 @@ class TenderVectorDB:
                     if point_creation_errors <= 10:
                         print(f"❌ Помилка створення точки для запису {i+valid_indices[rel_idx]}: {e}")
                     continue
-            # Відправка батчів рівно по batch_size
-            while len(points_to_upsert) >= batch_size:
+            # Якщо накопичили пул для вставки
+            if len(points_to_upsert) >= prepare_pool_size:
+                # Вставляємо у Qdrant по batch_size
+                while len(points_to_upsert) >= batch_size:
+                    batch_num += 1
+                    batch_points = points_to_upsert[:batch_size]
+                    print(f"\n🔀 Батч #{batch_num}: підготовлено {points_prepared} записів, у батчі {len(batch_points)} точок")
+                    batch_start = datetime.now()
+                    success_count = self._upsert_batch(batch_points, batch_num)
+                    batch_time = (datetime.now() - batch_start).total_seconds()
+                    batch_stat = {
+                        'batch_num': batch_num,
+                        'points_prepared': len(batch_points),
+                        'points_uploaded': success_count,
+                        'points_failed': len(batch_points) - success_count,
+                        'batch_time': batch_time
+                    }
+                    results['batch_stats'].append(batch_stat)
+                    print(f"✅ Батч #{batch_num}: відправлено {success_count}/{len(batch_points)} точок за {batch_time:.2f}с")
+                    results['indexed_count'] += success_count
+                    results['error_count'] += len(batch_points) - success_count
+                    # Додаємо лог по кількості записів у базі
+                    current_count = self.get_collection_size()
+                    print(f"📊 Поточна кількість записів у базі після батчу #{batch_num}: {current_count}")
+                    points_to_upsert = points_to_upsert[batch_size:]
+                    points_added_to_batch = len(points_to_upsert)
+                    if batch_num % 10 == 0:
+                        elapsed = (datetime.now() - start_time).total_seconds()
+                        speed = results['indexed_count'] / elapsed if elapsed > 0 else 0
+                        pbar.set_postfix(
+                            batches=batch_num,
+                            indexed=f"{results['indexed_count']:,}",
+                            speed=f"{speed:.0f}/с"
+                        )
+            pbar.update(len(batch_items))
+            i += embedding_batch_size
+        # Вставка залишку
+        if points_to_upsert:
+            while len(points_to_upsert) > 0:
                 batch_num += 1
                 batch_points = points_to_upsert[:batch_size]
-                print(f"\n🔀 Батч #{batch_num}: підготовлено {points_prepared} записів, у батчі {len(batch_points)} точок")
+                print(f"\n🔀 Батч #{batch_num}: {len(batch_points)} точок (залишок)")
                 batch_start = datetime.now()
                 success_count = self._upsert_batch(batch_points, batch_num)
                 batch_time = (datetime.now() - batch_start).total_seconds()
@@ -719,42 +755,10 @@ class TenderVectorDB:
                     'batch_time': batch_time
                 }
                 results['batch_stats'].append(batch_stat)
-                print(f"✅ Батч #{batch_num}: відправлено {success_count}/{len(batch_points)} точок за {batch_time:.2f}с")
+                print(f"✅ Батч #{batch_num}: відправлено {success_count}/{len(batch_points)} точок")
                 results['indexed_count'] += success_count
                 results['error_count'] += len(batch_points) - success_count
-                # Додаємо лог по кількості записів у базі
-                current_count = self.get_collection_size()
-                print(f"📊 Поточна кількість записів у базі після батчу #{batch_num}: {current_count}")
                 points_to_upsert = points_to_upsert[batch_size:]
-                points_added_to_batch = len(points_to_upsert)
-                if batch_num % 10 == 0:
-                    elapsed = (datetime.now() - start_time).total_seconds()
-                    speed = results['indexed_count'] / elapsed if elapsed > 0 else 0
-                    pbar.set_postfix(
-                        batches=batch_num,
-                        indexed=f"{results['indexed_count']:,}",
-                        speed=f"{speed:.0f}/с"
-                    )
-            pbar.update(len(batch_items))
-            i += embedding_batch_size
-        # Останній батч
-        if points_to_upsert:
-            batch_num += 1
-            print(f"\n🔀 Останній батч #{batch_num}: {len(points_to_upsert)} точок")
-            batch_start = datetime.now()
-            success_count = self._upsert_batch(points_to_upsert, batch_num)
-            batch_time = (datetime.now() - batch_start).total_seconds()
-            batch_stat = {
-                'batch_num': batch_num,
-                'points_prepared': len(points_to_upsert),
-                'points_uploaded': success_count,
-                'points_failed': len(points_to_upsert) - success_count,
-                'batch_time': batch_time
-            }
-            results['batch_stats'].append(batch_stat)
-            print(f"✅ Останній батч: відправлено {success_count}/{len(points_to_upsert)} точок")
-            results['indexed_count'] += success_count
-            results['error_count'] += len(points_to_upsert) - success_count
         pbar.close()
         
         # Детальна статистика батчів
@@ -1318,4 +1322,35 @@ class TenderVectorDB:
         except Exception as e:
             self.logger.error(f"❌ Помилка отримання груп тендера: {e}")
             return {}
+
+    def get_all_supplier_ids(self) -> list:
+        """
+        Повертає всі унікальні EDRPOU (ідентифікатори постачальників) з колекції Qdrant.
+        """
+        client = self.client  # ← виправлено тут
+        collection = self.collection_name if hasattr(self, 'collection_name') else "tender_vectors"
+
+        edrpou_set = set()
+        offset = None
+
+        while True:
+            response = client.scroll(
+                collection_name=collection,
+                limit=1000,
+                offset=offset,
+                with_payload=True,
+                scroll_filter=None  # ← виправлено тут
+            )
+            points = response[0]
+            if not points:
+                break
+            for point in points:
+                edrpou = point.payload.get("edrpou")
+                if edrpou:
+                    edrpou_set.add(edrpou)
+            if len(points) < 1000:
+                break
+            offset = points[-1].id
+
+        return list(edrpou_set)
 

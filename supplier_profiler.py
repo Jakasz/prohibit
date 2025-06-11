@@ -7,6 +7,8 @@ import logging
 from dataclasses import dataclass, field
 import re
 
+import tqdm
+
 
 @dataclass
 class SupplierMetrics:
@@ -15,8 +17,6 @@ class SupplierMetrics:
     won_tenders: int = 0
     total_positions: int = 0
     won_positions: int = 0
-    total_revenue: float = 0.0
-    avg_position_value: float = 0.0
     win_rate: float = 0.0
     position_win_rate: float = 0.0
     recent_win_rate: float = 0.0
@@ -53,8 +53,6 @@ class SupplierProfile:
                 'won_tenders': self.metrics.won_tenders,
                 'total_positions': self.metrics.total_positions,
                 'won_positions': self.metrics.won_positions,
-                'total_revenue': self.metrics.total_revenue,
-                'avg_position_value': self.metrics.avg_position_value,
                 'win_rate': self.metrics.win_rate,
                 'position_win_rate': self.metrics.position_win_rate,
                 'recent_win_rate': self.metrics.recent_win_rate,
@@ -79,7 +77,7 @@ class SupplierProfile:
 class SupplierProfiler:
     """Система профілювання постачальників"""
     
-    def __init__(self, categories_manager=None):
+    def __init__(self, categories_manager=None, vector_db=None):
         self.profiles: Dict[str, SupplierProfile] = {}
         self.categories_manager = categories_manager
         self.market_benchmarks: Dict[str, float] = {}
@@ -88,7 +86,8 @@ class SupplierProfiler:
         # Патерни для розпізнавання
         self.brand_patterns = self._init_brand_patterns()
         self.quality_indicators = self._init_quality_indicators()
-        
+        self.vector_db = vector_db  # Додаємо посилання на векторну базу
+
     def _init_brand_patterns(self) -> Dict[str, re.Pattern]:
         """Ініціалізація патернів брендів"""
         brands = [
@@ -105,53 +104,88 @@ class SupplierProfiler:
             'standard': ['стандарт', 'якісн', 'надійн'],
             'budget': ['економ', 'бюджет', 'аналог']
         }
-    def build_profiles(self, historical_data: List[Dict], update_mode: bool = False) -> Dict[str, Any]:
+    def build_profiles(self, update_mode: bool = False) -> Dict[str, Any]:
         """
-        Масове створення/оновлення профілів постачальників
-        
+        Масове створення/оновлення профілів постачальників з векторної бази tender_vectors
         Args:
-            historical_data: Список історичних даних тендерів
             update_mode: True для оновлення існуючих профілів
         """
-        self.logger.info(f"🔄 Створення профілів для {len(historical_data)} записів...")
-        
-        # Групування даних по постачальниках
-        suppliers_data = defaultdict(list)
-        for item in historical_data:
-            edrpou = item.get('EDRPOU')
-            if edrpou:
-                suppliers_data[edrpou].append(item)
-        
-        self.logger.info(f"📊 Знайдено {len(suppliers_data)} унікальних постачальників")
-        
+        self.logger.info(f"🔄 Завантаження даних з векторної бази tender_vectors...")
+
+        # Отримання всіх унікальних EDRPOU з бази
+        all_edrpou = self.vector_db.get_all_supplier_ids()  # Метод має повертати список EDRPOU
+
+        self.logger.info(f"📊 Знайдено {len(all_edrpou)} унікальних постачальників у tender_vectors")
+
         results = {
-            'total_suppliers': len(suppliers_data),
+            'total_suppliers': len(all_edrpou),
             'new_profiles': 0,
             'updated_profiles': 0,
             'errors': 0
         }
-    
-        # Створення/оновлення профілів
-        for edrpou, supplier_items in tqdm(suppliers_data.items(), desc="Створення профілів"):
+
+        for edrpou in tqdm(all_edrpou, desc="Створення профілів"):
             try:
+                # Отримати агреговані дані по постачальнику з векторної бази
+                supplier_data = self.vector_db.get_supplier_aggregate(edrpou)
+                if not supplier_data:
+                    continue
+
                 if edrpou in self.profiles and update_mode:
-                    # Оновлення існуючого профілю
-                    self.update_profile(edrpou, supplier_items)
+                    self.update_profile_from_vector(edrpou, supplier_data)
                     results['updated_profiles'] += 1
                 else:
-                    # Створення нового профілю
-                    profile = self.create_profile(supplier_items)
+                    profile = self.create_profile_from_vector(supplier_data)
                     if profile:
                         self.profiles[edrpou] = profile
                         results['new_profiles'] += 1
             except Exception as e:
                 self.logger.error(f"Помилка створення профілю для {edrpou}: {e}")
                 results['errors'] += 1
-        
+
         self.logger.info(f"✅ Створено профілів: {results['new_profiles']}")
         self.logger.info(f"✅ Оновлено профілів: {results['updated_profiles']}")
-        
+
         return results
+
+    def create_profile_from_vector(self, supplier_data: Dict) -> SupplierProfile:
+        """Створення профілю постачальника з агрегованих даних векторної бази"""
+        edrpou = supplier_data.get('EDRPOU', '')
+        name = supplier_data.get('supp_name', '')
+        profile = SupplierProfile(edrpou=edrpou, name=name)
+
+        # Заповнення метрик з агрегованих даних
+        metrics = profile.metrics
+        metrics.total_tenders = supplier_data.get('total_tenders', 0)
+        metrics.won_tenders = supplier_data.get('won_tenders', 0)
+        metrics.total_positions = supplier_data.get('total_positions', 0)
+        metrics.won_positions = supplier_data.get('won_positions', 0)
+        metrics.win_rate = supplier_data.get('win_rate', 0.0)
+        metrics.position_win_rate = supplier_data.get('position_win_rate', 0.0)
+        metrics.recent_win_rate = supplier_data.get('recent_win_rate', 0.0)
+        metrics.growth_rate = supplier_data.get('growth_rate', 0.0)
+        metrics.stability_score = supplier_data.get('stability_score', 0.0)
+        metrics.specialization_score = supplier_data.get('specialization_score', 0.0)
+        metrics.competition_resistance = supplier_data.get('competition_resistance', 0.0)
+
+        # Інші поля профілю
+        profile.categories = supplier_data.get('categories', {})
+        profile.industries = supplier_data.get('industries', {})
+        profile.cpv_experience = supplier_data.get('cpv_experience', {})
+        profile.brand_expertise = supplier_data.get('brand_expertise', [])
+        profile.competitive_advantages = supplier_data.get('competitive_advantages', [])
+        profile.weaknesses = supplier_data.get('weaknesses', [])
+        profile.market_position = supplier_data.get('market_position', 'unknown')
+        profile.reliability_score = supplier_data.get('reliability_score', 0.0)
+        profile.profile_version = supplier_data.get('profile_version', 1)
+        profile.last_updated = supplier_data.get('last_updated', datetime.now().isoformat())
+
+        return profile
+
+    def update_profile_from_vector(self, edrpou: str, supplier_data: Dict):
+        """Оновлення профілю з агрегованих даних векторної бази"""
+        profile = self.create_profile_from_vector(supplier_data)
+        self.profiles[edrpou] = profile
 
     def get_all_profiles(self) -> Dict[str, SupplierProfile]:
         """Отримання всіх профілів"""
@@ -231,51 +265,43 @@ class SupplierProfiler:
     def _calculate_metrics(self, profile: SupplierProfile, data: List[Dict]):
         """Розрахунок основних метрик"""
         metrics = profile.metrics
-        
+
         # Підрахунок базових показників
         tender_numbers = set()
         won_tender_numbers = set()
-        total_revenue = 0.0
-        
+
         for item in data:
             tender_num = item.get('F_TENDERNUMBER')
             if tender_num:
                 tender_numbers.add(tender_num)
                 if item.get('WON'):
                     won_tender_numbers.add(tender_num)
-            
+
             metrics.total_positions += 1
             if item.get('WON'):
                 metrics.won_positions += 1
-                try:
-                    budget = float(item.get('ITEM_BUDGET', 0))
-                    total_revenue += budget
-                except:
-                    pass
-        
+
         metrics.total_tenders = len(tender_numbers)
         metrics.won_tenders = len(won_tender_numbers)
-        metrics.total_revenue = total_revenue
-        
+
         # Розрахунок win rates
         if metrics.total_tenders > 0:
             metrics.win_rate = metrics.won_tenders / metrics.total_tenders
-        
+
         if metrics.total_positions > 0:
             metrics.position_win_rate = metrics.won_positions / metrics.total_positions
-            metrics.avg_position_value = total_revenue / metrics.won_positions if metrics.won_positions > 0 else 0
-        
-        # Recent performance (останні 90 днів)
+
+        # Recent performance (останні 180 днів)
         self._calculate_recent_performance(profile, data)
-        
+
         # Growth rate
         self._calculate_growth_rate(profile, data)
-        
+
         # Stability score
         self._calculate_stability_score(profile, data)
     
     def _calculate_recent_performance(self, profile: SupplierProfile, data: List[Dict]):
-        """Розрахунок недавньої продуктивності"""
+        """Розрахунок недавньої продуктивності (за 180 днів)"""
         try:
             # Парсинг дат
             dated_items = []
@@ -287,13 +313,13 @@ class SupplierProfiler:
                         dated_items.append((date, item))
                     except:
                         pass
-            
+        
             if not dated_items:
                 return
             
             dated_items.sort(key=lambda x: x[0], reverse=True)
             latest_date = dated_items[0][0]
-            cutoff_date = latest_date - timedelta(days=90)
+            cutoff_date = latest_date - timedelta(days=180)  # було 90
             
             # Фільтрація недавніх позицій
             recent_items = [item for date, item in dated_items if date >= cutoff_date]
@@ -513,10 +539,7 @@ class SupplierProfiler:
         
         # Критерії для визначення позиції
         if metrics.total_tenders >= 50 and metrics.win_rate >= 0.3:
-            if metrics.total_revenue >= 1000000:
-                profile.market_position = "market_leader"
-            else:
-                profile.market_position = "established_player"
+            profile.market_position = "established_player"
         elif metrics.total_tenders >= 20:
             if metrics.win_rate >= 0.2:
                 profile.market_position = "competitive_player"
@@ -568,23 +591,18 @@ class SupplierProfiler:
     def _calculate_reliability_score(self, profile: SupplierProfile, data: List[Dict]):
         """Розрахунок показника надійності"""
         factors = []
-        
+
         # 1. Досвід (кількість тендерів)
         experience_score = min(profile.metrics.total_tenders / 100, 1.0)
         factors.append(experience_score * 0.3)
-        
+
         # 2. Win rate
         win_rate_score = min(profile.metrics.win_rate * 2, 1.0)
         factors.append(win_rate_score * 0.3)
-        
+
         # 3. Стабільність
         factors.append(profile.metrics.stability_score * 0.2)
-        
-        # 4. Фінансовий об'єм
-        if profile.metrics.total_revenue > 0:
-            revenue_score = min(profile.metrics.total_revenue / 5000000, 1.0)
-            factors.append(revenue_score * 0.2)
-        
+
         profile.reliability_score = sum(factors)
     
     def update_profile(self, edrpou: str, new_data: List[Dict]):
@@ -672,25 +690,22 @@ class SupplierProfiler:
         else:
             # Загальні бенчмарки
             category_profiles = list(self.profiles.values())
-        
+
         if not category_profiles:
             return {}
-        
+
         # Розрахунок бенчмарків
         win_rates = [p.metrics.win_rate for p in category_profiles]
-        revenues = [p.metrics.total_revenue for p in category_profiles]
         positions = [p.metrics.total_positions for p in category_profiles]
-        
+
         benchmarks = {
             'avg_win_rate': np.mean(win_rates),
             'median_win_rate': np.median(win_rates),
             'top_quartile_win_rate': np.percentile(win_rates, 75),
-            'avg_revenue': np.mean(revenues),
-            'median_revenue': np.median(revenues),
             'avg_positions': np.mean(positions),
             'total_suppliers': len(category_profiles)
         }
-        
+
         return benchmarks
     
     def save_profiles(self, filepath: str):
