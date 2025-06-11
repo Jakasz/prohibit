@@ -43,6 +43,7 @@ class SupplierProfile:
     profile_version: int = 1
     last_updated: str = field(default_factory=lambda: datetime.now().isoformat())
     
+    
     def to_dict(self) -> Dict:
         """Конвертація в словник"""
         return {
@@ -87,6 +88,77 @@ class SupplierProfiler:
         self.brand_patterns = self._init_brand_patterns()
         self.quality_indicators = self._init_quality_indicators()
         self.vector_db = vector_db  # Додаємо посилання на векторну базу
+
+    def build_profiles_from_aggregated_data(self, aggregated_data: Dict[str, List[Dict]], 
+                                       batch_size: int = 1000) -> Dict[str, Any]:
+        """
+        Створення профілів з попередньо агрегованих даних
+        Оптимізовано для швидкої обробки великих об'ємів
+        """
+        results = {
+            'new_profiles': 0,
+            'updated_profiles': 0,
+            'errors': 0
+        }
+        
+        # Обробка батчами для контролю пам'яті
+        edrpou_list = list(aggregated_data.keys())
+        
+        for i in range(0, len(edrpou_list), batch_size):
+            batch_edrpou = edrpou_list[i:i + batch_size]
+            
+            for edrpou in batch_edrpou:
+                try:
+                    items = aggregated_data[edrpou]
+                    if not items:
+                        continue
+                    
+                    # Швидке створення профілю
+                    profile = self._create_minimal_profile(edrpou, items)
+                    
+                    if edrpou in self.profiles:
+                        self.profiles[edrpou] = profile
+                        results['updated_profiles'] += 1
+                    else:
+                        self.profiles[edrpou] = profile
+                        results['new_profiles'] += 1
+                        
+                except Exception as e:
+                    self.logger.error(f"Помилка профілю {edrpou}: {e}")
+                    results['errors'] += 1
+            
+            # Періодичне очищення пам'яті
+            if i % (batch_size * 10) == 0:
+                import gc
+                gc.collect()
+        
+        return results
+
+    def _create_minimal_profile(self, edrpou: str, items: List[Dict]) -> SupplierProfile:
+        """Мінімальний профіль для швидкості"""
+        profile = SupplierProfile(
+            edrpou=edrpou,
+            name=items[0].get('supplier_name', '') if items else ''
+        )
+        
+        # Тільки базові метрики
+        tenders = set()
+        won = 0
+        
+        for item in items:
+            tender = item.get('tender_number', '')
+            if tender:
+                tenders.add(tender)
+            if item.get('won'):
+                won += 1
+        
+        profile.metrics.total_positions = len(items)
+        profile.metrics.won_positions = won
+        profile.metrics.total_tenders = len(tenders)
+        profile.metrics.position_win_rate = won / len(items) if items else 0
+        
+        return profile
+
 
     def _init_brand_patterns(self) -> Dict[str, re.Pattern]:
         """Ініціалізація патернів брендів"""
