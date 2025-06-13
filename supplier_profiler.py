@@ -310,27 +310,27 @@ class SupplierProfiler:
         self.logger.info(f"✅ Завантажено {len(self.profiles)} профілів")
 
     
-    def create_profile(self, supplier_data: List[Dict]) -> SupplierProfile:
+    def create_profile(self, edrpou, items):
         """Створення профілю постачальника"""
-        if not supplier_data:
+        if not items:
             return None
         
         # Базова інформація
-        first_item = supplier_data[0]
+        first_item = items[0]
         edrpou = first_item.get('EDRPOU', '')
         name = first_item.get('supp_name', '')
         
         profile = SupplierProfile(edrpou=edrpou, name=name)
         
         # Розрахунок метрик
-        self._calculate_metrics(profile, supplier_data)
-        self._analyze_categories(profile, supplier_data)
-        self._analyze_industries(profile, supplier_data)
-        self._analyze_cpv_experience(profile, supplier_data)
-        self._analyze_brand_expertise(profile, supplier_data)
+        self._calculate_metrics(profile, items)
+        self._analyze_categories(profile, items)
+        self._analyze_industries(profile, items)
+        self._analyze_cpv_experience(profile, items)
+        self._analyze_brand_expertise(profile, items)
         self._determine_market_position(profile)
         self._identify_strengths_weaknesses(profile)
-        self._calculate_reliability_score(profile, supplier_data)
+        self._calculate_reliability_score(profile, items)
         
         return profile
     
@@ -486,19 +486,19 @@ class SupplierProfiler:
         except Exception as e:
             self.logger.error(f"Error calculating stability score: {e}")
     
-    def _analyze_categories(self, profile: SupplierProfile, data: List[Dict]):
+    def _analyze_categories(self, profile, items):
         """Аналіз категорій постачальника"""
         category_stats = defaultdict(lambda: {
             'total': 0, 'won': 0, 'revenue': 0.0,
             'items': [], 'win_rate': 0.0
         })
         
-        for item in data:
+        for item in items:
             item_name = item.get('F_ITEMNAME', '')
             
             # Визначення категорій
-            if self.category_manager:
-                categories = self.category_manager.categorize_item(item_name)
+            if self.categories_manager:
+                categories = self.categories_manager.categorize_item(item_name)
             else:
                 categories = ['unknown']
             
