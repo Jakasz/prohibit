@@ -222,8 +222,8 @@ class SupplierProfiler:
 
     def create_profile_from_vector(self, supplier_data: Dict) -> SupplierProfile:
         """Створення профілю постачальника з агрегованих даних векторної бази"""
-        edrpou = supplier_data.get('EDRPOU', '')
-        name = supplier_data.get('supp_name', '')
+        edrpou = supplier_data.get('EDRPOU', '') or supplier_data.get('edrpou', '')
+        name = supplier_data.get('supplier_name', '') or supplier_data.get('supp_name', '')
         profile = SupplierProfile(edrpou=edrpou, name=name)
 
         # Заповнення метрик з агрегованих даних
@@ -315,12 +315,32 @@ class SupplierProfiler:
         if not items:
             return None
         
-        # Базова інформація
-        first_item = items[0]
-        edrpou = first_item.get('EDRPOU', '')
-        name = first_item.get('supp_name', '')
+        # Діагностика даних
+        self.logger.debug(f"Створення профілю для {edrpou} з {len(items)} записів")
         
-        profile = SupplierProfile(edrpou=edrpou, name=name)
+        # Базова інформація - ПЕРЕВІРЯЄМО РІЗНІ ПОЛЯ
+        first_item = items[0]
+        
+        # Витягуємо ЄДРПОУ з різних можливих полів
+        actual_edrpou = (
+            edrpou or  # Переданий параметр
+            first_item.get('edrpou') or 
+            first_item.get('EDRPOU') or
+            ''
+        )
+        
+        # Витягуємо назву з різних можливих полів
+        name = (
+            first_item.get('supplier_name') or 
+            first_item.get('supp_name') or
+            first_item.get('name') or
+            first_item.get('SUPP_NAME') or
+            f'Постачальник {actual_edrpou}'  # Fallback
+        )
+        
+        self.logger.debug(f"Знайдено: ЄДРПОУ={actual_edrpou}, Назва={name}")
+        
+        profile = SupplierProfile(edrpou=actual_edrpou, name=name)
         
         # Розрахунок метрик
         self._calculate_metrics(profile, items)
@@ -333,6 +353,7 @@ class SupplierProfiler:
         self._calculate_reliability_score(profile, items)
         
         return profile
+
     
     def _calculate_metrics(self, profile: SupplierProfile, data: List[Dict]):
         """Розрахунок основних метрик"""
@@ -343,18 +364,39 @@ class SupplierProfiler:
         won_tender_numbers = set()
 
         for item in data:
-            tender_num = item.get('F_TENDERNUMBER')
+            # ВИПРАВЛЕННЯ: Перевіряємо різні варіанти полів
+            tender_num = (
+                item.get('tender_number') or 
+                item.get('F_TENDERNUMBER') or
+                item.get('TENDER_NUMBER') or
+                ''
+            )
+            
             if tender_num:
                 tender_numbers.add(tender_num)
-                if item.get('WON'):
+                
+                # Перевіряємо різні варіанти поля WON
+                is_won = (
+                    item.get('won') or 
+                    item.get('WON') or
+                    False
+                )
+                
+                if is_won:
                     won_tender_numbers.add(tender_num)
 
             metrics.total_positions += 1
-            if item.get('WON'):
+            
+            # Перевіряємо різні варіанти поля WON
+            if item.get('won') or item.get('WON'):
                 metrics.won_positions += 1
 
         metrics.total_tenders = len(tender_numbers)
         metrics.won_tenders = len(won_tender_numbers)
+
+        # Діагностика
+        self.logger.debug(f"Метрики: тендерів={metrics.total_tenders}, виграно={metrics.won_tenders}, "
+                        f"позицій={metrics.total_positions}, виграно позицій={metrics.won_positions}")
 
         # Розрахунок win rates
         if metrics.total_tenders > 0:
@@ -371,6 +413,7 @@ class SupplierProfiler:
 
         # Stability score
         self._calculate_stability_score(profile, data)
+
     
     def _calculate_recent_performance(self, profile: SupplierProfile, data: List[Dict]):
         """Розрахунок недавньої продуктивності (за 180 днів)"""
@@ -378,11 +421,24 @@ class SupplierProfiler:
             # Парсинг дат
             dated_items = []
             for item in data:
-                date_str = item.get('DATEEND')
+                # ВИПРАВЛЕННЯ: Перевіряємо різні варіанти полів дати
+                date_str = (
+                    item.get('date_end') or
+                    item.get('DATEEND') or
+                    item.get('DATE_END') or
+                    ''
+                )
+                
                 if date_str:
                     try:
-                        date = datetime.strptime(date_str, "%d.%m.%Y")
-                        dated_items.append((date, item))
+                        # Спробуємо різні формати дат
+                        for fmt in ['%d.%m.%Y', '%Y-%m-%d', '%Y-%m-%dT%H:%M:%S']:
+                            try:
+                                date = datetime.strptime(date_str.split('T')[0], fmt)
+                                dated_items.append((date, item))
+                                break
+                            except:
+                                continue
                     except:
                         pass
         
@@ -391,17 +447,18 @@ class SupplierProfiler:
             
             dated_items.sort(key=lambda x: x[0], reverse=True)
             latest_date = dated_items[0][0]
-            cutoff_date = latest_date - timedelta(days=180)  # було 90
+            cutoff_date = latest_date - timedelta(days=180)
             
             # Фільтрація недавніх позицій
             recent_items = [item for date, item in dated_items if date >= cutoff_date]
             
             if recent_items:
-                recent_won = sum(1 for item in recent_items if item.get('WON'))
+                recent_won = sum(1 for item in recent_items if (item.get('won') or item.get('WON')))
                 profile.metrics.recent_win_rate = recent_won / len(recent_items)
             
         except Exception as e:
             self.logger.error(f"Error calculating recent performance: {e}")
+
     
     def _calculate_growth_rate(self, profile: SupplierProfile, data: List[Dict]):
         """Розрахунок темпу зростання"""
@@ -410,14 +467,14 @@ class SupplierProfiler:
             quarterly_data = defaultdict(lambda: {'total': 0, 'won': 0})
             
             for item in data:
-                date_str = item.get('DATEEND')
+                date_str = item.get('DATEEND') or item.get('date_end')
                 if date_str:
                     try:
                         date = datetime.strptime(date_str, "%d.%m.%Y")
                         quarter_key = f"{date.year}-Q{(date.month - 1) // 3 + 1}"
                         
                         quarterly_data[quarter_key]['total'] += 1
-                        if item.get('WON'):
+                        if (item.get('WON') or item.get('won')):
                             quarterly_data[quarter_key]['won'] += 1
                     except:
                         pass
@@ -445,23 +502,24 @@ class SupplierProfiler:
             # 1. Стабільність win rate по кварталах
             quarterly_win_rates = []
             quarterly_data = defaultdict(lambda: {'total': 0, 'won': 0})
-            
+            42934830
             for item in data:
-                date_str = item.get('DATEEND')
+                date_str = (item.get('DATEEND') or 
+                            item.get('date_end')) 
                 if date_str:
                     try:
                         date = datetime.strptime(date_str, "%d.%m.%Y")
                         quarter_key = f"{date.year}-Q{(date.month - 1) // 3 + 1}"
                         
                         quarterly_data[quarter_key]['total'] += 1
-                        if item.get('WON'):
+                        if item.get('WON') or item.get('won'):
                             quarterly_data[quarter_key]['won'] += 1
                     except:
                         pass
             
             for quarter_data in quarterly_data.values():
                 if quarter_data['total'] > 0:
-                    win_rate = quarter_data['won'] / quarter_data['total']
+                    win_rate = quarter_data['won']  / quarter_data['total']
                     quarterly_win_rates.append(win_rate)
             
             if len(quarterly_win_rates) >= 2:
@@ -494,23 +552,23 @@ class SupplierProfiler:
         })
         
         for item in items:
-            item_name = item.get('F_ITEMNAME', '')
-            
-            # Визначення категорій
-            if self.categories_manager:
-                categories = self.categories_manager.categorize_item(item_name)
-            else:
+            # ВИПРАВЛЕННЯ: Перетворюємо рядок на список
+            category = (item.get('industry') or item.get('F_INDUSTRYNAME'))
+            if not category:
                 categories = ['unknown']
-            
+            else:
+                # Якщо це рядок - робимо список з одним елементом
+                categories = [category]
+
             for category in categories:
                 stats = category_stats[category]
                 stats['total'] += 1
-                stats['items'].append(item_name)
-                
-                if item.get('WON'):
+                stats['items'].append(category)
+
+                if (item.get('won') or item.get('WON')):
                     stats['won'] += 1
                     try:
-                        budget = float(item.get('ITEM_BUDGET', 0))
+                        budget = float(item.get('budget') or item.get('ITEM_BUDGET'))*float(item.get('currency_rate') or item.get('F_TENDERCURRENCYRATE'))
                         stats['revenue'] += budget
                     except:
                         pass
@@ -533,6 +591,7 @@ class SupplierProfiler:
         if profile.categories:
             shares = [stats['specialization'] for stats in profile.categories.values()]
             profile.metrics.specialization_score = sum(s**2 for s in shares)
+
     
     def _analyze_industries(self, profile: SupplierProfile, data: List[Dict]):
         """Аналіз індустрій постачальника"""
@@ -545,10 +604,10 @@ class SupplierProfiler:
             stats = industry_stats[industry]
             stats['total'] += 1
             
-            if item.get('WON'):
+            if item.get('won'):
                 stats['won'] += 1
                 try:
-                    budget = float(item.get('ITEM_BUDGET', 0))
+                    budget = float(item.get('budget', 0))
                     stats['revenue'] += budget
                 except:
                     pass
@@ -568,20 +627,23 @@ class SupplierProfiler:
         })
         
         for item in data:
-            cpv = item.get('CPV')
+            cpv = item.get('CPV', '')
+            if not cpv:
+                cpv = item.get('cpv')
             if cpv and cpv != 0:
                 cpv_str = str(cpv)
                 stats = cpv_stats[cpv_str]
                 stats['total'] += 1
-                
-                if item.get('WON'):
+
+                if (item.get('won') or item.get('WON')): 
                     stats['won'] += 1
                 
-                # Додаємо категорії
-                item_name = item.get('F_ITEMNAME', '')
-                if self.category_manager:
-                    categories = self.category_manager.categorize_item(item_name)
-                    stats['categories'].update(categories)
+            #     # Додаємо категорії
+            #     item_name = (item.get('item_name',) or 
+            #                  item.get('F_ITEMNAME', ''))
+            #     if self.categories_manager:
+            #         categories = self.categories_manager.categorize_item(item_name)
+            #         stats['categories'].update(categories)
         
         # Розрахунок win rate та конвертація sets в lists
         for cpv, stats in cpv_stats.items():
@@ -596,8 +658,8 @@ class SupplierProfiler:
         brand_counter = Counter()
         
         for item in data:
-            item_name = item.get('F_ITEMNAME', '')
-            if item_name and item.get('WON'):
+            item_name = item.get('F_ITEMNAME', '') or item.get('item_name', '')
+            if item_name and (item.get('WON') or item.get('won')):
                 for brand, pattern in self.brand_patterns.items():
                     if pattern.search(item_name):
                         brand_counter[brand] += 1

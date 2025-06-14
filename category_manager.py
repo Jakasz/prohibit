@@ -159,7 +159,7 @@ class CategoryManager:
         }
     
 
-    def load_category_mappings(self, mapping_file: str = "category_mappings.json"):
+    def load_category_mappings(self, mapping_file: str = "data/category_mappings.json"):
         """Завантаження маппінгу категорій"""
         try:
             with open(mapping_file, 'r', encoding='utf-8') as f:
