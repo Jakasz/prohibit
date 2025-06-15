@@ -44,7 +44,7 @@ class PredictionEngine:
         self.scalers = {}
         self.feature_importance = {}
         self.model_performance = {}
-        self.monitor = ModelMonitor()
+        self.monitor = ModelMonitor()        
         self.logger = logging.getLogger(__name__)
 
         # Конфігурація моделей

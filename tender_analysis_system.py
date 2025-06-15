@@ -65,6 +65,7 @@ class TenderAnalysisSystem:
         self.predictor = None
         self.competition_analyzer = None
         self.supplier_profiler = None
+        self.feature_extractor = None
         
         # Конфігурація Qdrant
         self.qdrant_config = {
@@ -86,7 +87,37 @@ class TenderAnalysisSystem:
             'last_training_date': None,
             'vector_db_size': 0
         }
-    
+
+    def prepare_training_data(self) -> bool:
+        """Підготовка даних для навчання моделі"""
+        if not self.is_initialized:
+            raise RuntimeError("Система не ініціалізована")
+        
+        # Отримання історичних даних з векторної бази
+        historical_data = self.vector_db.export_collection_data(limit=100000)
+        
+        # Підготовка профілів постачальників
+        if hasattr(self.supplier_profiler, 'profiles') and self.supplier_profiler.profiles:
+            supplier_profiles = self.supplier_profiler.profiles
+        else:
+            # Завантаження з файлу якщо є
+            profiles_file = "supplier_profiles_COMPLETE.json"
+            if Path(profiles_file).exists():
+                self.supplier_profiler.load_profiles(profiles_file)
+                supplier_profiles = self.supplier_profiler.profiles
+            else:
+                self.logger.error("Профілі постачальників не знайдено!")
+                return False
+        
+        # Підготовка даних для predictor
+        X, y = self.predictor.prepare_training_data_from_history(
+            [item['payload'] for item in historical_data if 'payload' in item],
+            supplier_profiles
+        )
+        
+        self.predictor.training_data = (X, y)
+        return True
+
     def initialize_system(self) -> bool:
         """
         Повна ініціалізація всіх підсистем
@@ -133,15 +164,14 @@ class TenderAnalysisSystem:
                 categories_manager=self.categories_manager
             )
             # 6. Ініціалізація екстрактора ознак
-            feature_extractor = FeatureExtractor(
+            self.feature_extractor = FeatureExtractor(
                 categories_manager=self.categories_manager,
                 competition_analyzer=self.competition_analyzer
             )
             self.predictor = PredictionEngine(
-                # feature_extractor=feature_extractor
-                supplier_profiler = self.supplier_profiler,
-                competition_analyzer = self.competition_analyzer,
-                categories_manager = self.categories_manager
+                supplier_profiler=self.supplier_profiler,
+                competition_analyzer=self.competition_analyzer,
+                categories_manager=self.categories_manager
             )
             
             
@@ -154,108 +184,145 @@ class TenderAnalysisSystem:
             self.logger.error(f"❌ Помилка ініціалізації: {e}")
             return False
     
-    def load_and_process_data(self, 
-                            historical_data: List[Dict],
-                            update_mode: bool = False) -> Dict[str, Any]:
-        """
-        Завантаження та обробка історичних даних
+    def prepare_training_data_from_vector_db(self) -> Tuple[pd.DataFrame, pd.Series]:
+        """Підготовка навчальних даних з векторної бази"""
+        self.logger.info("📥 Завантаження даних з векторної бази для навчання...")
         
-        Args:
-            historical_data: Список історичних записів тендерів
-            update_mode: True для оновлення існуючих даних, False для повної переініціалізації
-        """
-        if not self.is_initialized:
-            raise RuntimeError("Система не ініціалізована. Викличте initialize_system()")
+        # 1. Отримуємо ВСІ записи з векторної бази
+        all_records = []
+        offset = None
+        batch_size = 10000
         
-        self.logger.info(f"📥 Обробка {len(historical_data)} записів (режим оновлення: {update_mode})")
+        while True:
+            try:
+                records, next_offset = self.vector_db.client.scroll(
+                    collection_name=self.vector_db.collection_name,
+                    offset=offset,
+                    limit=batch_size,
+                    with_payload=True,
+                    with_vectors=False  # Вектори не потрібні для навчання
+                )
+                
+                if not records:
+                    break
+                    
+                # Додаємо payload кожного запису
+                for record in records:
+                    if record.payload:
+                        all_records.append(record.payload)
+                
+                if not next_offset:
+                    break
+                offset = next_offset
+                
+                self.logger.info(f"   Завантажено {len(all_records):,} записів...")
+                
+            except Exception as e:
+                self.logger.error(f"Помилка завантаження: {e}")
+                break
         
-        results = {
-            'processed_records': len(historical_data),
-            'new_suppliers': 0,
-            'updated_suppliers': 0,
-            'new_categories': 0,
-            'vector_db_updates': 0,
-            'processing_time': 0
-        }
+        self.logger.info(f"✅ Завантажено {len(all_records):,} записів з векторної бази")
         
-        start_time = datetime.now()
+        # 2. Перетворюємо в DataFrame для зручності
+        df = pd.DataFrame(all_records)
         
-        try:
-            # 1. Оновлення категорій
-            category_stats = self.categories_manager.process_historical_data(historical_data)
-            results['new_categories'] = category_stats.get('new_categories', 0)
+        # 3. Витягуємо ознаки для кожного запису
+        features_list = []
+        targets = []
+        
+        for idx, row in df.iterrows():
+            # Конвертуємо рядок DataFrame назад у словник
+            item = row.to_dict()
             
-            # 2. Створення/оновлення профілів постачальників
-            supplier_stats = self.supplier_profiler.build_profiles(
-                historical_data, 
-                update_mode=update_mode
-            )
-            results['new_suppliers'] = supplier_stats.get('new_profiles', 0)
-            results['updated_suppliers'] = supplier_stats.get('updated_profiles', 0)
+            # Витягуємо ЄДРПОУ для пошуку профілю
+            edrpou = item.get('edrpou', '')
             
-            # 3. Оновлення векторної бази
-            vector_stats = self.vector_db.index_tenders(
-                historical_data, 
-                update_mode=update_mode
-            )
-            results['vector_db_updates'] = vector_stats.get('indexed_count', 0)
+            # Отримуємо профіль постачальника (якщо є)
+            supplier_profile = None
+            if edrpou and hasattr(self.supplier_profiler, 'profiles'):
+                supplier_profile = self.supplier_profiler.profiles.get(edrpou)
+                if supplier_profile:
+                    supplier_profile = supplier_profile.to_dict()
             
-            # 4. Оновлення аналізу конкуренції
-            self.competition_analyzer.update_competition_metrics(historical_data)
+            # Витягуємо всі ознаки
+            features = self.feature_extractor.extract_features(item, supplier_profile)
+            features_list.append(features)
             
-            # 5. Оновлення системних метрик
-            self._update_system_metrics(historical_data)
-            
-            results['processing_time'] = (datetime.now() - start_time).total_seconds()
-            self.last_update = datetime.now()
-            
-            self.logger.info(f"✅ Обробка завершена за {results['processing_time']:.2f} сек")
-            self.logger.info(f"📊 Нові постачальники: {results['new_suppliers']}")
-            self.logger.info(f"📊 Оновлені постачальники: {results['updated_suppliers']}")
-            self.logger.info(f"📊 Записів у векторній БД: {results['vector_db_updates']}")
-            
-            return results
-            
-        except Exception as e:
-            self.logger.error(f"❌ Помилка обробки даних: {e}")
-            raise
-    
-    def train_prediction_model(self, 
-                             validation_split: float = 0.2,
-                             cross_validation_folds: int = 5) -> Dict[str, Any]:
-        """
-        Тренування моделі прогнозування
-        """
+            # Цільова змінна - чи виграв постачальник
+            targets.append(int(item.get('won', False)))
+        
+        # 4. Створюємо фінальні структури даних
+        X = pd.DataFrame(features_list)
+        y = pd.Series(targets)
+        
+        # 5. Діагностика даних
+        self.logger.info(f"\n📊 Статистика навчальних даних:")
+        self.logger.info(f"   • Всього зразків: {len(X):,}")
+        self.logger.info(f"   • Кількість ознак: {len(X.columns)}")
+        self.logger.info(f"   • Розподіл класів:")
+        self.logger.info(f"     - WON=0 (програли): {(y == 0).sum():,} ({(y == 0).sum() / len(y) * 100:.1f}%)")
+        self.logger.info(f"     - WON=1 (виграли): {(y == 1).sum():,} ({(y == 1).sum() / len(y) * 100:.1f}%)")
+        
+        # Перевірка балансу класів
+        if (y == 1).sum() < len(y) * 0.05:
+            self.logger.warning("⚠️ Дуже мало позитивних прикладів (<5%). Модель може погано навчатися!")
+        
+        return X, y
+
+
+   
+    def train_prediction_model(self, validation_split: float = 0.2, cv_folds: int = 5) -> Dict[str, Any]:
+        """Навчання моделі прогнозування на даних з векторної бази"""
         if not self.is_initialized:
             raise RuntimeError("Система не ініціалізована")
         
-        if self.system_metrics['total_tenders'] == 0:
-            raise ValueError("Немає даних для тренування. Спочатку завантажте історичні дані")
+        # 1. Перевірка наявності даних у векторній базі
+        db_size = self.vector_db.get_collection_size()
+        if db_size < 1000:
+            raise ValueError(f"Недостатньо даних у векторній базі: {db_size}. Мінімум 1000 записів.")
         
-        self.logger.info("🎯 Початок тренування моделі прогнозування...")
+        self.logger.info(f"🎯 Початок навчання на {db_size:,} записах з векторної бази...")
         
         try:
-            # Тренування моделі
-            training_results = self.predictor.train_model(
-                validation_split=validation_split,
-                cv_folds=cross_validation_folds
+            # 2. Підготовка даних безпосередньо з векторної бази
+            X, y = self.prepare_training_data_from_vector_db()
+            
+            # 3. Збереження даних у predictor для подальшого використання
+            self.predictor.training_data = (X, y)
+            
+            # 4. Навчання моделей
+            training_results = self.predictor.train_models(
+                X, y,
+                test_size=validation_split,
+                use_calibration=True
             )
             
-            # Оновлення метрик системи
-            self.system_metrics['model_performance'] = training_results['performance_metrics']
+            # 5. Оновлення метрик системи
+            self.system_metrics['model_performance'] = training_results
             self.system_metrics['last_training_date'] = datetime.now().isoformat()
+            self.system_metrics['training_samples'] = len(X)
             
             self.is_trained = True
             
-            self.logger.info("✅ Модель натренована успішно")
-            self.logger.info(f"📈 AUC Score: {training_results['performance_metrics']['auc_score']:.4f}")
+            self.logger.info("✅ Модель навчена успішно")
+            self.logger.info(f"📈 Ensemble AUC: {training_results.get('ensemble', {}).get('test_auc', 0):.4f}")
             
-            return training_results
+            # 6. Вивід результатів по кожній моделі
+            for model_name, metrics in training_results.items():
+                if model_name != 'ensemble' and isinstance(metrics, dict):
+                    self.logger.info(f"   • {model_name}: AUC = {metrics.get('test_auc', 0):.4f}")
+            
+            return {
+                'performance_metrics': training_results,
+                'training_samples': len(X),
+                'feature_count': len(X.columns),
+                'positive_rate': (y == 1).sum() / len(y)
+            }
             
         except Exception as e:
-            self.logger.error(f"❌ Помилка тренування: {e}")
+            self.logger.error(f"❌ Помилка навчання: {e}")
             raise
-    
+
     def predict_tender_outcomes(self, 
                               tender_data: List[Dict],
                               include_competition_analysis: bool = True,
@@ -320,22 +387,6 @@ class TenderAnalysisSystem:
             self.logger.error(f"❌ Помилка прогнозування: {e}")
             raise
     
-    def search_tenders(self, 
-                      query: str, 
-                      filters: Optional[Dict] = None,
-                      limit: int = 20) -> List[Dict]:
-        """
-        Пошук тендерів у векторній базі
-        """
-        if not self.is_initialized:
-            raise RuntimeError("Система не ініціалізована")
-        
-        return self.vector_db.search_by_text(
-            query=query,
-            filters=filters,
-            limit=limit
-        )
-    
     def get_supplier_analytics(self, 
                              edrpou: str,
                              include_competition: bool = True) -> Dict[str, Any]:
@@ -382,6 +433,34 @@ class TenderAnalysisSystem:
             'top_suppliers': self.supplier_profiler.get_top_suppliers_in_category(category_id),
             'market_trends': self._analyze_category_trends(category_id)
         }
+
+    def validate_training_readiness(self) -> Tuple[bool, List[str]]:
+        """Перевірка готовності до навчання"""
+        issues = []
+        
+        # Перевірка ініціалізації
+        if not self.is_initialized:
+            issues.append("Система не ініціалізована")
+        
+        # Перевірка векторної бази
+        db_size = self.vector_db.get_collection_size()
+        if db_size < 1000:
+            issues.append(f"Недостатньо даних у векторній базі: {db_size} (мінімум 1000)")
+        
+        # Перевірка профілів
+        if not self.supplier_profiler.profiles:
+            issues.append("Відсутні профілі постачальників")
+        
+        # Перевірка категорій
+        if not self.categories_manager.categories:
+            issues.append("Не завантажені категорії")
+        
+        # Перевірка feature extractor
+        if not hasattr(self.predictor, 'feature_extractor'):
+            issues.append("Feature extractor не ініціалізований")
+        
+        return len(issues) == 0, issues
+    
     
     def update_incremental(self, new_data: List[Dict]) -> Dict[str, Any]:
         """
@@ -470,151 +549,6 @@ class TenderAnalysisSystem:
         
         self.logger.info("✅ Систему завантажено")
     
-    def create_vector_db_from_jsonl(self, jsonl_path: str, collection_name: Optional[str] = None, batch_size: int = 100) -> Dict[str, Any]:
-        """
-        Створення векторної бази з файлу JSONL з усіма полями
-        Args:
-            jsonl_path: шлях до файлу JSONL з тендерами
-            collection_name: назва колекції Qdrant (опціонально)
-            batch_size: розмір батчу для індексації
-        Returns:
-            Статистика індексації
-        """
-        self.logger.info(f"📂 Завантаження даних з {jsonl_path} для створення векторної бази...")
-        if not Path(jsonl_path).exists():
-            self.logger.error(f"❌ Файл {jsonl_path} не знайдено")
-            raise FileNotFoundError(f"Файл {jsonl_path} не знайдено")
-
-        # Завантаження даних з JSONL
-        historical_data = []
-        with open(jsonl_path, 'r', encoding='utf-8') as f:
-            for line_num, line in enumerate(f, 1):
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    record = json.loads(line)
-                    historical_data.append(record)
-                except Exception as e:
-                    self.logger.warning(f"Помилка парсингу JSON у рядку {line_num}: {e}")
-
-        self.logger.info(f"✅ Завантажено {len(historical_data)} записів з {jsonl_path}")
-
-        # Якщо потрібно, створюємо нову колекцію з новою назвою
-        if collection_name:
-            from .vector_database import TenderVectorDB
-            self.vector_db = TenderVectorDB(
-                embedding_model=self.embedding_model,
-                qdrant_host=self.qdrant_config['host'],
-                qdrant_port=self.qdrant_config['port'],
-                collection_name=collection_name
-            )
-            self.logger.info(f"🔧 Створено нову колекцію Qdrant: {collection_name}")
-        elif self.vector_db is None:
-            from .vector_database import TenderVectorDB
-            self.vector_db = TenderVectorDB(
-                embedding_model=self.embedding_model,
-                qdrant_host=self.qdrant_config['host'],
-                qdrant_port=self.qdrant_config['port']
-            )
-
-        # Передаємо менеджер категорій у векторну базу (для категоризації)
-        if hasattr(self.vector_db, 'category_manager') and self.vector_db.category_manager is None:
-            self.vector_db.category_manager = self.categories_manager
-
-        # Індексація у векторній базі
-        stats = self.vector_db.index_tenders(
-            historical_data=historical_data,
-            update_mode=False,
-            batch_size=batch_size
-        )
-
-        self.logger.info(f"✅ Векторна база створена. Проіндексовано: {stats.get('indexed_count', 0)} записів")
-        return stats
-    
-    def process_large_dataset(self, jsonl_path: str, batch_size: int = 1000, max_records: int = None) -> Dict[str, Any]:
-        """
-        Потокова обробка великого JSONL файлу
-        
-        Args:
-            jsonl_path: шлях до JSONL файлу
-            batch_size: розмір батчу для обробки
-            max_records: максимальна кількість записів (для тестування)
-        """
-        self.logger.info(f"📂 Потокова обробка {jsonl_path}")
-        
-        if not Path(jsonl_path).exists():
-            raise FileNotFoundError(f"Файл {jsonl_path} не знайдено")
-        
-        stats = {
-            'total_read': 0,
-            'total_indexed': 0,
-            'total_errors': 0,
-            'batches_processed': 0
-        }
-        
-        batch_data = []
-        
-        with open(jsonl_path, 'r', encoding='utf-8') as f:
-            for line_num, line in enumerate(f, 1):
-                if max_records and line_num > max_records:
-                    break
-                
-                try:
-                    record = json.loads(line.strip())
-                    batch_data.append(record)
-                    stats['total_read'] += 1
-                    
-                    if len(batch_data) >= batch_size:
-                        # Обробка батчу
-                        self._process_batch(batch_data, stats)
-                        batch_data = []
-                        
-                        # Прогрес
-                        if stats['total_read'] % 10000 == 0:
-                            self.logger.info(f"Оброблено {stats['total_read']:,} записів")
-                            
-                except Exception as e:
-                    self.logger.error(f"Помилка в рядку {line_num}: {e}")
-                    stats['total_errors'] += 1
-        
-        # Останній батч
-        if batch_data:
-            self._process_batch(batch_data, stats)
-        
-        return stats
-
-    def _process_batch(self, batch_data: List[Dict], stats: Dict):
-        """Обробка одного батчу даних"""
-        try:
-            # Оновлення профілів постачальників
-            suppliers_by_edrpou = defaultdict(list)
-            for item in batch_data:
-                edrpou = item.get('EDRPOU')
-                if edrpou:
-                    suppliers_by_edrpou[edrpou].append(item)
-            
-            # Оновлення профілів
-            for edrpou, items in suppliers_by_edrpou.items():
-                self.supplier_profiler.update_profile(edrpou, items)
-            
-            # Індексація у векторній базі
-            index_results = self.vector_db.index_tenders(
-                batch_data,
-                update_mode=True,
-                batch_size=100
-            )
-            
-            stats['total_indexed'] += index_results['indexed_count']
-            stats['total_errors'] += index_results['error_count']
-            stats['batches_processed'] += 1
-            
-        except Exception as e:
-            self.logger.error(f"Помилка обробки батчу: {e}")
-            stats['total_errors'] += len(batch_data)
-
-
-
 
     # Приватні допоміжні методи
     
