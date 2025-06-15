@@ -333,7 +333,7 @@ class PredictionEngine:
             model_class = config['class']
             model_params = config['params'].copy()  # Копія для модифікації
             
-            # ===== [6] НОВЕ: Спеціальна обробка для різних моделей =====
+            # ===== [6]: Спеціальна обробка для різних моделей =====
             if model_name == 'xgboost' and XGBOOST_AVAILABLE:
                 # Розрахунок ваги для балансування класів
                 scale_pos_weight = (y_train == 0).sum() / (y_train == 1).sum()

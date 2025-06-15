@@ -37,9 +37,11 @@ class AdvancedFeatureProcessor:
         
         # Налаштування імпутера для числових даних
         if len(self.numeric_features) > 5:
-            self.numeric_imputer = KNNImputer(n_neighbors=5)
+            self.numeric_imputer = KNNImputer()
+            self.numeric_imputer.fit(X[self.numeric_features])        
         else:
             self.numeric_imputer = SimpleImputer(strategy='median')
+            self.numeric_imputer.fit(X[self.numeric_features])
         
         # Target encoding для високо-кардинальних категоріальних змінних
         if y is not None:

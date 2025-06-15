@@ -191,7 +191,7 @@ class TenderAnalysisSystem:
         # 1. Отримуємо ВСІ записи з векторної бази
         all_records = []
         offset = None
-        batch_size = 10000
+        batch_size = 30000
         
         while True:
             try:
