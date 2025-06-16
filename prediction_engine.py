@@ -496,6 +496,13 @@ class PredictionEngine:
             features = self.feature_extractor.extract_features(item, supplier_profile)
             features_list.append(features)
         X = pd.DataFrame(features_list).fillna(0)
+
+        # Додаємо відсутні ознаки, якщо потрібно
+        for col in self.feature_names:
+            if col not in X.columns:
+                X[col] = 0
+        X = X[self.feature_names]  # впорядкувати колонки
+
         probs = self.predict_proba(X)
         results = []
         for i, item in enumerate(tender_items):

@@ -539,11 +539,12 @@ class TenderAnalysisSystem:
         
         # Відновлення основного стану
         system_state = system_data.get('system_state', {})
-        self.is_initialized = system_state.get('initialized', False)
-        self.is_trained = system_state.get('trained', False)
-        self.system_metrics = system_state.get('metrics', {})
+        system_info = system_state.get('system_info', {})
+        self.is_initialized = system_info.get('initialized', False)
+        self.is_trained = system_info.get('trained', False)
+        self.system_metrics = system_info.get('metrics', {})
         
-        last_update_str = system_state.get('last_update')
+        last_update_str = system_info.get('last_update')
         if last_update_str:
             self.last_update = datetime.fromisoformat(last_update_str)
         

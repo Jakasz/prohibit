@@ -36,24 +36,24 @@ class FeatureExtractor:
         
         # 2. Категоріальні ознаки
         categories = self.category_manager.categorize_item(item.get('F_ITEMNAME', ''))
-        features['primary_category'] = categories[0][0] if categories else 'unknown'
-        features['category_confidence'] = categories[0][1] if categories else 0.0
+        features['primary_category'] = 0.0 # categories[0][0] if categories else 
+        features['category_confidence'] =0.0 # categories[0][1] if categories else 0.0
         features['num_categories'] = len(categories)
         
         # 3. Ознаки постачальника
         if supplier_profile:
-            metrics = supplier_profile.get('metrics', {})
-            features['supplier_win_rate'] = metrics.get('win_rate', 0)
-            features['supplier_position_win_rate'] = metrics.get('position_win_rate', 0)
-            features['supplier_experience'] = metrics.get('total_tenders', 0)
-            features['supplier_stability'] = metrics.get('stability_score', 0)
-            features['supplier_specialization'] = metrics.get('specialization_score', 0)
-            features['supplier_recent_win_rate'] = metrics.get('recent_win_rate', 0)
-            features['supplier_growth_rate'] = metrics.get('growth_rate', 0)
-            features['supplier_reliability'] = supplier_profile.get('reliability_score', 0)
+            metrics = getattr(supplier_profile, 'metrics', {})
+            features['supplier_win_rate'] = getattr(metrics, 'win_rate', 0)
+            features['supplier_position_win_rate'] = getattr(metrics, 'position_win_rate', 0)
+            features['supplier_experience'] = getattr(metrics, 'total_tenders', 0)
+            features['supplier_stability'] = getattr(metrics, 'stability_score', 0)
+            features['supplier_specialization'] = getattr(metrics, 'specialization_score', 0)
+            features['supplier_recent_win_rate'] = getattr(metrics, 'recent_win_rate', 0)
+            features['supplier_growth_rate'] = getattr(metrics, 'growth_rate', 0)
+            features['supplier_reliability'] = getattr(supplier_profile, 'reliability_score', 0)
             
             # Категоріальна експертиза постачальника
-            cat_data = supplier_profile.get('categories', {}).get(features['primary_category'], {})
+            cat_data = getattr(supplier_profile, 'categories', {}).get(features['primary_category'], {})
             features['supplier_category_experience'] = cat_data.get('total', 0)
             features['supplier_category_win_rate'] = cat_data.get('win_rate', 0)
         else:
