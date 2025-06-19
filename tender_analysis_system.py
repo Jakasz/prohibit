@@ -352,7 +352,7 @@ class TenderAnalysisSystem:
         
         try:
             # 1. Основні прогнози
-            predictions = self.predictor.predict_batch(tender_data)
+            predictions = self.predictor.predict_tender(tender_data, supplier_profiles=self.supplier_profiler.profiles)
             results['predictions'] = predictions
             
             # 2. Аналіз конкуренції (якщо потрібно)

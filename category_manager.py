@@ -159,7 +159,7 @@ class CategoryManager:
         }
     
 
-    def load_category_mappings(self, mapping_file: str = "data/category_mappings.json"):
+    def load_category_mappings(self, mapping_file: str = "data/category_map.json"):
         """Завантаження маппінгу категорій"""
         try:
             with open(mapping_file, 'r', encoding='utf-8') as f:
@@ -397,9 +397,6 @@ class CategoryManager:
         
         # 2. Пошук за ключовими словами
         for cat_id, cat_data in self.categories.items():
-            if not cat_data.get('active', True):
-                continue
-            
             keywords = cat_data.get('keywords', [])
             if not keywords:
                 continue
