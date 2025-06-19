@@ -12,8 +12,6 @@ warnings.filterwarnings('ignore')
 
 # ML та NLP бібліотеки
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.metrics import classification_report, roc_auc_score, precision_recall_curve
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -126,54 +124,64 @@ class TenderAnalysisSystem:
             self.logger.info("🔧 Ініціалізація підсистем...")
             
             # 1. Ініціалізація менеджера категорій
-            from category_manager import CategoryManager  # Буде створено далі
+            from category_manager import CategoryManager
             self.categories_manager = CategoryManager(self.categories_file)
             
             if Path("category_mappings.json").exists():            
                 self.categories_manager.load_category_mappings("category_mappings.json")
                 self.logger.info("✅ Завантажено маппінг категорій")
 
-
             # 2. Ініціалізація векторної бази
-            from vector_database import TenderVectorDB  # Буде створено далі
+            from vector_database import TenderVectorDB
             self.vector_db = TenderVectorDB(
                 embedding_model=self.embedding_model,
                 qdrant_host=self.qdrant_config['host'],
                 qdrant_port=self.qdrant_config['port']
             )
             
-            # 3. Ініціалізація профайлера постачальників
-            from supplier_profiler import SupplierProfiler  # Буде створено далі
+            # 3. Ініціалізація ринкової статистики
+            from market_statistics import MarketStatistics
+            self.market_stats = MarketStatistics(
+                category_manager=self.categories_manager
+            )
+            
+            # Завантаження або створення статистики
+            if not self.market_stats.load_statistics():
+                self.logger.info("📊 Статистика не знайдена. Буде створена при першому навчанні.")
+            
+            # 4. Ініціалізація профайлера постачальників
+            from supplier_profiler import SupplierProfiler
             self.supplier_profiler = SupplierProfiler(
                 categories_manager=self.categories_manager,
                 vector_db=self.vector_db
             )
             
-            # 4. Ініціалізація аналізатора конкуренції
-            from competition_analyzer import CompetitionAnalyzer  # Буде створено далі
+            # 5. Ініціалізація аналізатора конкуренції
+            from competition_analyzer import CompetitionAnalyzer
             self.competition_analyzer = CompetitionAnalyzer(
                 categories_manager=self.categories_manager,
                 vector_db=self.vector_db
             )
             
-            # 5. Ініціалізація системи прогнозування
-            from prediction_engine import PredictionEngine  # Буде створено далі
-            self.predictor = PredictionEngine(
-                supplier_profiler=self.supplier_profiler,
-                competition_analyzer=self.competition_analyzer,
-                categories_manager=self.categories_manager
-            )
-            # 6. Ініціалізація екстрактора ознак
-            self.feature_extractor = FeatureExtractor(
-                categories_manager=self.categories_manager,
-                competition_analyzer=self.competition_analyzer
-            )
+            # 6. Ініціалізація системи прогнозування
+            from prediction_engine import PredictionEngine
             self.predictor = PredictionEngine(
                 supplier_profiler=self.supplier_profiler,
                 competition_analyzer=self.competition_analyzer,
                 categories_manager=self.categories_manager
             )
             
+            # 7. Ініціалізація екстрактора ознак
+            self.feature_extractor = FeatureExtractor(
+                categories_manager=self.categories_manager,
+                competition_analyzer=self.competition_analyzer
+            )
+            
+            # Передаємо market_stats в feature_extractor
+            self.feature_extractor.set_market_statistics(self.market_stats)
+            
+            # Передаємо feature_extractor в predictor
+            self.predictor.feature_extractor = self.feature_extractor
             
             self.is_initialized = True
             self.logger.info("✅ Всі підсистеми ініціалізовано успішно")
@@ -183,6 +191,53 @@ class TenderAnalysisSystem:
         except Exception as e:
             self.logger.error(f"❌ Помилка ініціалізації: {e}")
             return False
+        
+
+    def update_market_statistics(self) -> Dict[str, Any]:
+        """Оновлення ринкової статистики на основі історичних даних"""
+        if not self.is_initialized:
+            raise RuntimeError("Система не ініціалізована")
+        
+        self.logger.info("📊 Оновлення ринкової статистики...")
+        
+        # Отримання історичних даних
+        historical_data = []
+        offset = None
+        
+        while True:
+            try:
+                records, next_offset = self.vector_db.client.scroll(
+                    collection_name=self.vector_db.collection_name,
+                    offset=offset,
+                    limit=40000,
+                    with_payload=True,
+                    with_vectors=False
+                )
+                
+                if not records:
+                    break
+                    
+                for record in records:
+                    if record.payload:
+                        historical_data.append(record.payload)
+                
+                if not next_offset:
+                    break
+                offset = next_offset
+                
+            except Exception as e:
+                self.logger.error(f"Помилка завантаження: {e}")
+                break
+        
+        # Розрахунок статистики
+        results = self.market_stats.calculate_market_statistics(historical_data)
+        
+        self.logger.info(f"✅ Статистика оновлена для {results['categories_processed']} категорій")
+        
+        return results
+
+
+
     
     def prepare_training_data_from_vector_db(self) -> Tuple[pd.DataFrame, pd.Series]:
         """Підготовка навчальних даних з векторної бази"""
@@ -273,6 +328,13 @@ class TenderAnalysisSystem:
    
     def train_prediction_model(self, validation_split: float = 0.2, cv_folds: int = 5) -> Dict[str, Any]:
         """Навчання моделі прогнозування на даних з векторної бази"""
+        if not self.is_initialized:
+            raise RuntimeError("Система не ініціалізована")
+        
+        # Оновлюємо ринкову статистику перед навчанням
+        self.logger.info("📊 Оновлення ринкової статистики перед навчанням...")
+        self.update_market_statistics()
+
         if not self.is_initialized:
             raise RuntimeError("Система не ініціалізована")
         
