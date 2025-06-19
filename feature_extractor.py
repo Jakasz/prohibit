@@ -80,6 +80,60 @@ class FeatureExtractor:
             for key in ['competition_intensity', 'market_concentration', 'entry_barrier',
                        'price_volatility', 'avg_participants', 'market_stability']:
                 features[key] = 0.0
+
+
+        if supplier_profile:
+            # Кластери постачальника
+            supplier_clusters = supplier_profile.get('clusters', [])
+            features['supplier_cluster_count'] = len(supplier_clusters)
+            
+            # Ознаки конкуренції на основі кластерів
+            top_competitors = supplier_profile.get('top_competitors', [])
+            bottom_competitors = supplier_profile.get('bottom_competitors', [])
+            
+            # Метрики топ конкурентів
+            if top_competitors:
+                avg_top_win_rate = sum(c['year_win_rate'] for c in top_competitors) / len(top_competitors)
+                features['competitor_top_avg_win_rate'] = avg_top_win_rate
+                
+                # Порівняння з топ конкурентами
+                supplier_win_rate = supplier_profile.get('metrics', {}).get('win_rate', 0)
+                features['supplier_vs_top_competitors'] = supplier_win_rate - avg_top_win_rate
+                
+                # Кількість сильних конкурентів
+                features['strong_competitors_count'] = len([c for c in top_competitors if c['year_win_rate'] > 0.5])
+            else:
+                features['competitor_top_avg_win_rate'] = 0
+                features['supplier_vs_top_competitors'] = 0
+                features['strong_competitors_count'] = 0
+            
+            # Чи є лідером в своїх кластерах
+            total_wins = supplier_profile.get('metrics', {}).get('won_positions', 0)
+            features['is_cluster_leader'] = 1 if total_wins > 1000 else 0
+            
+            # Специфічні кластери як бінарні ознаки
+            important_clusters = [
+                'agricultural_parts', 'construction', 'medical', 
+                'office_supplies', 'electronics', 'food', 'fuel', 
+                'services', 'communication'
+            ]
+            
+            for cluster in important_clusters:
+                features[f'works_in_{cluster}'] = 1 if cluster in supplier_clusters else 0
+        else:
+            # Дефолтні значення для кластерних ознак
+            features['supplier_cluster_count'] = 0
+            features['competitor_top_avg_win_rate'] = 0
+            features['supplier_vs_top_competitors'] = 0
+            features['strong_competitors_count'] = 0
+            features['is_cluster_leader'] = 0
+        
+        # Дефолтні значення для кластерів
+        for cluster in ['agricultural_parts', 'construction', 'medical', 
+                    'office_supplies', 'electronics', 'food', 'fuel', 
+                    'services', 'communication']:
+            features[f'works_in_{cluster}'] = 0
+        # 5. Ознаки постачальника з профілю    
         
         # 5. Темпоральні ознаки
         date_str = item.get('DATEEND', '')

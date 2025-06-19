@@ -53,3 +53,5 @@ pkl_test_qry.py
 prf.py
 test_predic.py
 tender_system_trained.pkl
+supplier_profiles_with_clusters.json
+supplier_profiles_COMPLETE1.json

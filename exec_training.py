@@ -3,6 +3,7 @@ from pathlib import Path
 from tender_analysis_system import TenderAnalysisSystem
 
 
+
 system = TenderAnalysisSystem(
     categories_file="categories.jsonl",
     qdrant_host="localhost",
@@ -19,12 +20,33 @@ if db_size < 1000:
     exit(1)
 
 # 3. ОПЦІОНАЛЬНО: Завантаження профілів постачальників (покращує якість)
-profiles_file = "supplier_profiles_COMPLETE.json"
-if Path(profiles_file).exists():
-    system.supplier_profiler.load_profiles(profiles_file)
-    print(f"✅ Завантажено {len(system.supplier_profiler.profiles)} профілів")
-else:
-    print("⚠️ Профілі не знайдено. Навчання буде без них (гірша якість)")
+profiles_files = [
+    "supplier_profiles_with_clusters.json",
+    "supplier_profiles_COMPLETE.json"
+]
+profiles_loaded = False
+
+for profiles_file in profiles_files:
+    if Path(profiles_file).exists():
+        system.supplier_profiler.load_profiles(profiles_file)
+        print(f"✅ Завантажено {len(system.supplier_profiler.profiles)} профілів з {profiles_file}")
+        profiles_loaded = True
+        break
+
+if not profiles_loaded:
+    print("⚠️ Профілі не знайдено. Створюємо нові...")
+    
+    # Імпортуємо та запускаємо створення
+    from update_supplier_profiles_with_clusters import ProfileBuilderWithClusters
+    
+    builder = ProfileBuilderWithClusters(system.vector_db)
+    profiles = builder.build_profiles_from_vector_db()
+    builder.save_profiles()
+    
+    # Завантажуємо створені профілі
+    system.supplier_profiler.load_profiles("supplier_profiles_with_clusters.json")
+    print(f"✅ Створено та завантажено {len(system.supplier_profiler.profiles)} профілів")
+
 
 # 4. Навчання моделі НА ДАНИХ З ВЕКТОРНОЇ БАЗИ
 try:

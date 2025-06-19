@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 import numpy as np
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple, Any, Set
@@ -34,6 +35,7 @@ class SupplierProfile:
     metrics: SupplierMetrics = field(default_factory=SupplierMetrics)
     categories: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     industries: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    clusters: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     cpv_experience: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     brand_expertise: List[str] = field(default_factory=list)
     competitive_advantages: List[str] = field(default_factory=list)
@@ -42,7 +44,11 @@ class SupplierProfile:
     reliability_score: float = 0.0
     profile_version: int = 1
     last_updated: str = field(default_factory=lambda: datetime.now().isoformat())
-    
+    risk_indicators: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    has_risks: bool = False
+    overall_risk_level: str = "low"
+    top_competitors: List[Tuple[str, float]] = field(default_factory=list)
+    bottom_competitors: List[Tuple[str, float]] = field(default_factory=list)    
     
     def to_dict(self) -> Dict:
         """Конвертація в словник"""
@@ -64,6 +70,7 @@ class SupplierProfile:
             },
             'categories': self.categories,
             'industries': self.industries,
+            'clusters' : self.clusters,  
             'cpv_experience': self.cpv_experience,
             'brand_expertise': self.brand_expertise,
             'competitive_advantages': self.competitive_advantages,
@@ -71,7 +78,12 @@ class SupplierProfile:
             'market_position': self.market_position,
             'reliability_score': self.reliability_score,
             'profile_version': self.profile_version,
-            'last_updated': self.last_updated
+            'last_updated': self.last_updated,
+            'risk_indicators': self.risk_indicators,
+            'has_risks': self.has_risks,
+            'overall_risk_level': self.overall_risk_level,
+            'top_competitors': self.top_competitors,
+            'bottom_competitors': self.bottom_competitors
         }
 
 
@@ -351,6 +363,7 @@ class SupplierProfiler:
         self._determine_market_position(profile)
         self._identify_strengths_weaknesses(profile)
         self._calculate_reliability_score(profile, items)
+        self._analyze_risk_indicators(profile, items)
         
         return profile
 
@@ -738,6 +751,187 @@ class SupplierProfiler:
         factors.append(profile.metrics.stability_score * 0.2)
 
         profile.reliability_score = sum(factors)
+
+    def _analyze_risk_indicators(self, profile: SupplierProfile, data: List[Dict]):
+        """Аналіз ризик-індикаторів для профілю"""
+        risk_indicators = {}
+        
+        # 1. Ранній попереджувальний індикатор (падіння win rate)
+        early_warning = self._check_early_warning_indicator(profile, data)
+        if early_warning:
+            risk_indicators['early_warning'] = early_warning
+        
+        # 2. Концентраційний ризик (залежність від одного замовника)
+        concentration_risk = self._check_concentration_risk(data)
+        if concentration_risk:
+            risk_indicators['concentration_risk'] = concentration_risk
+        
+        # 3. Ризик зникнення
+        disappearance_risk = self._check_disappearance_risk(data)
+        if disappearance_risk:
+            risk_indicators['disappearance_risk'] = disappearance_risk
+        
+        # Додаємо до профілю
+        if risk_indicators:
+            profile.risk_indicators = risk_indicators
+            profile.has_risks = True
+            # Визначаємо загальний рівень ризику
+            risk_levels = [r.get('level', 'low') for r in risk_indicators.values()]
+            if 'critical' in risk_levels:
+                profile.overall_risk_level = 'critical'
+            elif 'high' in risk_levels:
+                profile.overall_risk_level = 'high'
+            elif 'medium' in risk_levels:
+                profile.overall_risk_level = 'medium'
+            else:
+                profile.overall_risk_level = 'low'
+        else:
+            profile.has_risks = False
+            profile.overall_risk_level = 'low'
+
+    def _check_early_warning_indicator(self, profile: SupplierProfile, data: List[Dict]):
+        """Перевірка різкого падіння win rate"""
+        # Групуємо дані по кварталах
+        quarterly_data = defaultdict(lambda: {'total': 0, 'won': 0})
+        
+        for item in data:
+            date_str = item.get('DATEEND') or item.get('date_end')
+            if date_str:
+                try:
+                    date = datetime.strptime(date_str, "%d.%m.%Y")
+                    quarter_key = f"{date.year}-Q{(date.month - 1) // 3 + 1}"
+                    quarterly_data[quarter_key]['total'] += 1
+                    if item.get('WON') or item.get('won'):
+                        quarterly_data[quarter_key]['won'] += 1
+                except:
+                    pass
+        
+        if len(quarterly_data) < 2:
+            return None
+        
+        # Сортуємо квартали
+        sorted_quarters = sorted(quarterly_data.keys())
+        
+        # Порівнюємо останні 2 квартали
+        current_q = sorted_quarters[-1]
+        previous_q = sorted_quarters[-2]
+        
+        current_data = quarterly_data[current_q]
+        previous_data = quarterly_data[previous_q]
+        
+        if current_data['total'] > 0 and previous_data['total'] > 0:
+            current_wr = current_data['won'] / current_data['total']
+            previous_wr = previous_data['won'] / previous_data['total']
+            
+            if previous_wr > 0:
+                decline = (previous_wr - current_wr) / previous_wr
+                
+                if decline > 0.3:  # Падіння більше 30%
+                    return {
+                        'level': 'high',
+                        'message': f'Різке падіння win rate з {previous_wr:.1%} до {current_wr:.1%} (-{decline:.1%})',
+                        'previous_quarter': previous_q,
+                        'current_quarter': current_q,
+                        'previous_win_rate': previous_wr,
+                        'current_win_rate': current_wr,
+                        'decline_percentage': decline
+                    }
+        
+        return None  
+
+    def _check_concentration_risk(self, data: List[Dict]):
+        """Перевірка залежності від одного замовника"""
+        owner_counts = defaultdict(int)
+        total_positions = len(data)
+        
+        for item in data:
+            owner = item.get('OWNER_NAME') or item.get('owner_name')
+            if owner:
+                owner_counts[owner] += 1
+        
+        if not owner_counts or total_positions == 0:
+            return None
+        
+        # Знаходимо топового замовника
+        top_owner, top_count = max(owner_counts.items(), key=lambda x: x[1])
+        concentration = top_count / total_positions
+        
+        if concentration >= 0.75:  # 75% або більше
+            return {
+                'level': 'high',
+                'message': f'Критична залежність від замовника "{top_owner}": {concentration:.1%} всіх тендерів',
+                'dominant_owner': top_owner,
+                'concentration_percentage': concentration,
+                'positions_count': top_count,
+                'total_positions': total_positions,
+                'other_owners': len(owner_counts) - 1
+            }
+        
+        return None
+      
+    def _check_disappearance_risk(self, data: List[Dict]):
+        """Перевірка ризику зникнення (різке зниження активності)"""
+        # Групуємо по роках
+        yearly_activity = defaultdict(int)
+        latest_date = None
+        
+        for item in data:
+            date_str = item.get('DATEEND') or item.get('date_end')
+            if date_str:
+                try:
+                    date = datetime.strptime(date_str, "%d.%m.%Y")
+                    year = date.year
+                    yearly_activity[year] += 1
+                    
+                    if latest_date is None or date > latest_date:
+                        latest_date = date
+                except:
+                    pass
+        
+        if len(yearly_activity) < 2:
+            return None
+        
+        # Сортуємо роки
+        sorted_years = sorted(yearly_activity.keys())
+        
+        # Порівнюємо останні 2 роки
+        if len(sorted_years) >= 2:
+            current_year = sorted_years[-1]
+            previous_year = sorted_years[-2]
+            
+            current_activity = yearly_activity[current_year]
+            previous_activity = yearly_activity[previous_year]
+            
+            if previous_activity > 0:
+                decline = (previous_activity - current_activity) / previous_activity
+                
+                if decline > 0.7:  # Падіння більше 70%
+                    # Перевіряємо чи давно остання активність
+                    days_since_last = (datetime.now() - latest_date).days if latest_date else 999
+                    
+                    if days_since_last > 180:  # Більше 6 місяців
+                        return {
+                            'level': 'critical',
+                            'message': f'Постачальник зникає! Активність впала з {previous_activity} до {current_activity} позицій/рік. Остання активність {days_since_last} днів тому',
+                            'previous_year': previous_year,
+                            'current_year': current_year,
+                            'previous_activity': previous_activity,
+                            'current_activity': current_activity,
+                            'last_activity_date': latest_date.strftime('%d.%m.%Y') if latest_date else 'Невідомо',
+                            'days_inactive': days_since_last
+                        }
+                    else:
+                        return {
+                            'level': 'medium',
+                            'message': f'Різке зниження активності з {previous_activity} до {current_activity} позицій/рік (-{decline:.1%})',
+                            'previous_year': previous_year,
+                            'current_year': current_year,
+                            'decline_percentage': decline
+                        }
+        
+        return None
+
+
     
     def update_profile(self, edrpou: str, new_data: List[Dict]):
         """Оновлення профілю новими даними"""
@@ -857,6 +1051,14 @@ class SupplierProfiler:
     def load_profiles(self, filepath: str):
         """Завантаження профілів"""
         try:
+            # Перевірка різних версій файлу
+            if not Path(filepath).exists():
+                # Спробуємо файл з кластерами
+                clusters_file = filepath.replace('.json', '_with_clusters.json')
+                if Path(clusters_file).exists():
+                    filepath = clusters_file
+                    self.logger.info(f"Використовуємо файл з кластерами: {filepath}")
+            
             with open(filepath, 'r', encoding='utf-8') as f:
                 profiles_data = json.load(f)
             
