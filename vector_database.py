@@ -141,7 +141,7 @@ class TenderVectorDB:
             ("tender_number", models.PayloadSchemaType.KEYWORD),
             ("edrpou", models.PayloadSchemaType.KEYWORD),
             ("won", models.PayloadSchemaType.BOOL),
-            ("industry", models.PayloadSchemaType.KEYWORD),
+            ("category", models.PayloadSchemaType.KEYWORD),
             # НЕ індексуємо F_ITEMNAME - це текстове поле, займає багато місця
         ]
         
@@ -342,7 +342,7 @@ class TenderVectorDB:
                 'supplier_name': item.get('supp_name') or '',
                 
                 # Класифікація
-                'industry': item.get('F_INDUSTRYNAME') or '',
+                'category': item.get('F_INDUSTRYNAME') or '',
                 'cpv': int(item.get('CPV', 0)) if item.get('CPV') else 0,
                 
                 # Фінансові показники з валідацією
@@ -624,7 +624,7 @@ class TenderVectorDB:
                         'tender_name': item.get('F_TENDERNAME', ''),
                         'detail_name': item.get('F_DETAILNAME', ''),
                         'supplier_name': item.get('supp_name') or '',
-                        'industry': item.get('F_INDUSTRYNAME') or '',
+                        'category': item.get('F_INDUSTRYNAME') or '',
                         'cpv': int(item.get('CPV', 0)) if item.get('CPV') else 0,
                         'budget': 0.0,
                         'quantity': 0.0,
@@ -664,7 +664,7 @@ class TenderVectorDB:
                         pass
                     group_key_parts = [
                         str(metadata['edrpou']),
-                        str(metadata['industry']),
+                        str(metadata['category']),
                         str(metadata['item_name']),
                         str(metadata['owner_name']),
                         str(metadata['tender_name'])
@@ -918,7 +918,7 @@ class TenderVectorDB:
                 query_filter = models.Filter(
                     must=[
                         models.FieldCondition(
-                            key="industry",
+                            key="category",
                             match=models.MatchValue(value=industry)
                         )
                     ]
@@ -951,8 +951,7 @@ class TenderVectorDB:
                     'supplier_name': result.payload.get('supplier_name', ''),
                     'edrpou': result.payload.get('edrpou', ''),
                     'item_name': result.payload.get('item_name', ''),
-                    'industry': result.payload.get('industry', ''),
-                    'category': result.payload.get('primary_category', 'unknown'),
+                    'category': result.payload.get('category', ''),                
                     'budget': result.payload.get('budget', 0),
                     'won': result.payload.get('won', False),
                     'date_end': result.payload.get('date_end', ''),
@@ -997,14 +996,14 @@ class TenderVectorDB:
                         )
                     )
                 
-                # Фільтр по індустрії
-                if 'industry' in filters:
-                    filter_conditions.append(
-                        models.FieldCondition(
-                            key="industry",
-                            match=models.MatchValue(value=filters['industry'])
-                        )
-                    )
+                # # Фільтр по індустрії
+                # if 'industry' in filters:
+                #     filter_conditions.append(
+                #         models.FieldCondition(
+                #             key="industry",
+                #             match=models.MatchValue(value=filters['industry'])
+                #         )
+                #     )
                 
                 # Фільтр по бюджету
                 if 'min_budget' in filters or 'max_budget' in filters:
@@ -1056,7 +1055,7 @@ class TenderVectorDB:
                     'supplier_name': result.payload.get('supplier_name', ''),
                     'edrpou': result.payload.get('edrpou', ''),
                     'item_name': result.payload.get('item_name', ''),
-                    'industry': result.payload.get('industry', ''),
+                    'category': result.payload.get('category', ''),
                     'category': result.payload.get('primary_category', 'unknown'),
                     'budget': result.payload.get('budget', 0),
                     'won': result.payload.get('won', False),

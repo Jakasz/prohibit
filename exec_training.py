@@ -74,8 +74,7 @@ test_tender = {
     "EDRPOU": "12345678",
     "F_ITEMNAME": "Фільтр паливний для трактора John Deere",
     "F_TENDERNUMBER": "UA-2024-01-01-000001",
-    "F_INDUSTRYNAME": "Сільське господарство",
-    "CPV": "16810000"
+    "F_INDUSTRYNAME": "Сільське господарство"
 }
 
 predictions = system.predict_tender_outcomes([test_tender])

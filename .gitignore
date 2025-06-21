@@ -55,3 +55,8 @@ test_predic.py
 tender_system_trained.pkl
 supplier_profiles_with_clusters.json
 supplier_profiles_COMPLETE1.json
+tender_system_trained1.pkl
+market_statistics.json
+market_statistics1.json
+supplier_profiles_with_clusters1.json
+all_data_cache2.pkl

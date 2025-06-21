@@ -125,7 +125,7 @@ class SimpleTenderPredictor:
                 'edrpou': orig_item.get('edrpou'),
                 'tender_name': orig_item.get('tender_name'),
                 'item_name': orig_item.get('item_name'),
-                'industry': orig_item.get('industry_name'),
+                'category': orig_item.get('industry_name'),
                 'cpv': orig_item.get('cpv'),
                 'probability': pred['probability'],
                 'confidence': pred['confidence'],
@@ -213,7 +213,7 @@ class SimpleTenderPredictor:
                 print(f"   ЄДРПОУ: {item['edrpou']}")
                 print(f"   Тендер: {item['tender_name'][:50]}...")
                 print(f"   Товар: {item['item_name'][:50]}...")
-                print(f"   Галузь: {item['industry']}")
+                print(f"   Галузь: {item['category']}")
                 
                 if item['risk_factors']:
                     print(f"   ⚠️ Ризики: {', '.join(item['risk_factors'])}")

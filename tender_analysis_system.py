@@ -193,46 +193,56 @@ class TenderAnalysisSystem:
             return False
         
 
-    def update_market_statistics(self) -> Dict[str, Any]:
-        """Оновлення ринкової статистики на основі історичних даних"""
+    def update_market_statistics(self, use_cache: bool = True) -> Dict[str, Any]:
+        """
+        Оновлення ринкової статистики
+        
+        Args:
+            use_cache: Якщо True, використовує all_data_cache.pkl замість бази даних
+        """
         if not self.is_initialized:
             raise RuntimeError("Система не ініціалізована")
         
         self.logger.info("📊 Оновлення ринкової статистики...")
         
-        # Отримання історичних даних
-        historical_data = []
-        offset = None
-        
-        while True:
-            try:
-                records, next_offset = self.vector_db.client.scroll(
-                    collection_name=self.vector_db.collection_name,
-                    offset=offset,
-                    limit=40000,
-                    with_payload=True,
-                    with_vectors=False
-                )
-                
-                if not records:
-                    break
+        if use_cache and Path("all_data_cache.pkl").exists():
+            # Використовуємо кеш
+            self.logger.info("📂 Використання all_data_cache.pkl...")
+            results = self.market_stats.calculate_market_statistics_from_cache("all_data_cache.pkl")
+        else:
+            # Отримання історичних даних з бази
+            historical_data = []
+            offset = None
+            
+            while True:
+                try:
+                    records, next_offset = self.vector_db.client.scroll(
+                        collection_name=self.vector_db.collection_name,
+                        offset=offset,
+                        limit=10000,
+                        with_payload=True,
+                        with_vectors=False
+                    )
                     
-                for record in records:
-                    if record.payload:
-                        historical_data.append(record.payload)
-                
-                if not next_offset:
+                    if not records:
+                        break
+                        
+                    for record in records:
+                        if record.payload:
+                            historical_data.append(record.payload)
+                    
+                    if not next_offset:
+                        break
+                    offset = next_offset
+                    
+                except Exception as e:
+                    self.logger.error(f"Помилка завантаження: {e}")
                     break
-                offset = next_offset
-                
-            except Exception as e:
-                self.logger.error(f"Помилка завантаження: {e}")
-                break
+            
+            # Розрахунок статистики
+            results = self.market_stats.calculate_market_statistics(historical_data)
         
-        # Розрахунок статистики
-        results = self.market_stats.calculate_market_statistics(historical_data)
-        
-        self.logger.info(f"✅ Статистика оновлена для {results['categories_processed']} категорій")
+        self.logger.info(f"✅ Статистика оновлена для категорій")
         
         return results
 
@@ -331,9 +341,10 @@ class TenderAnalysisSystem:
         if not self.is_initialized:
             raise RuntimeError("Система не ініціалізована")
         
-        # Оновлюємо ринкову статистику перед навчанням
+        # Оновлюємо ринкову статистику перед навчанням (з кешу)
         self.logger.info("📊 Оновлення ринкової статистики перед навчанням...")
-        self.update_market_statistics()
+        self.update_market_statistics(use_cache=True)
+
 
         if not self.is_initialized:
             raise RuntimeError("Система не ініціалізована")

@@ -425,7 +425,7 @@ class VectorDBLoader:
             'supplier_name': record.get('supp_name', ''),
             
             # Класифікація
-            'industry': record.get('F_INDUSTRYNAME', ''),
+            'category': record.get('F_INDUSTRYNAME', ''),
             'cpv': self._safe_int(record.get('CPV')),
             'code_ua': record.get('F_codeUA', ''),
             

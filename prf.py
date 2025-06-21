@@ -80,7 +80,7 @@ class UltraFastProfileBuilder:
             # ПРАВИЛЬНИЙ SCROLL
             offset = None
             total_loaded = 0
-            batch_size = 10000  # Більший батч для швидкості
+            batch_size = 40000  # Більший батч для швидкості
             
             while True:
                 try:

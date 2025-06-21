@@ -10,7 +10,7 @@ import numpy as np
 
 class MarketStatistics:
     """
-    Статистика ринку по категоріях для оцінки нових постачальників
+    Статистика ринку по категоріях та кластерах для оцінки нових постачальників
     """
     
     def __init__(self, category_manager=None):
@@ -25,6 +25,61 @@ class MarketStatistics:
         self.percentile_cache = {}
         
         self.logger.info("✅ MarketStatistics ініціалізовано")
+    
+    def calculate_market_statistics_from_cache(self, cache_file: str = "all_data_cache.pkl") -> Dict[str, Any]:
+        """
+        Розрахунок статистики з кешу замість бази даних
+        """
+        import pickle
+        
+        self.logger.info(f"📂 Завантаження даних з {cache_file}...")
+        
+        try:
+            with open(cache_file, 'rb') as f:
+                cached_data = pickle.load(f)
+            
+            # Перевірка структури даних
+            if isinstance(cached_data, dict) and 'data' in cached_data:
+                historical_data = cached_data['data']
+            elif isinstance(cached_data, list):
+                historical_data = cached_data
+            elif isinstance(cached_data, dict):
+                # Структура з prf.py: {edrpou: [positions]}
+                self.logger.info(f"✅ Завантажено дані для {len(cached_data)} постачальників")
+                
+                # Перетворюємо в плоский список позицій
+                historical_data = []
+                for edrpou, positions in cached_data.items():
+                    for position in positions:
+                        # Нормалізуємо структуру для обробки
+                        normalized = {
+                            'EDRPOU': position.get('edrpou', edrpou),
+                            'F_TENDERNUMBER': position.get('tender_number', ''),
+                            'F_INDUSTRYNAME': position.get('industry', ''),
+                            'F_ITEMNAME': position.get('item_name', ''),
+                            'WON': position.get('won', False),
+                            'DATEEND': position.get('date_end', ''),
+                            # Додаткові поля які можуть знадобитися
+                            'supplier_name': position.get('supplier_name', ''),
+                            'budget': position.get('budget', 0),
+                            'quantity': position.get('quantity', 0),
+                            'price': position.get('price', 0)
+                        }
+                        historical_data.append(normalized)
+                
+                self.logger.info(f"✅ Перетворено в {len(historical_data):,} записів")
+            else:
+                self.logger.error("Невідомий формат кешу")
+                return {}
+            
+            # Використовуємо існуючий метод
+            return self.calculate_market_statistics(historical_data)
+            
+        except Exception as e:
+            self.logger.error(f"❌ Помилка завантаження кешу: {e}")
+            import traceback
+            traceback.print_exc()
+            return {}
     
     def calculate_market_statistics(self, historical_data: List[Dict]) -> Dict[str, Any]:
         """
@@ -43,13 +98,18 @@ class MarketStatistics:
         
         # Збір даних
         for item in historical_data:
-            # Категоризація
-            category = item.get('F_INDUSTRYNAME', 'unknown')
+            # ВАЖЛИВО: Використовуємо правильне поле для категорії
+            # Пріоритет: primary_category -> category -> unknown
+            category = item.get('primary_category')
+            if not category or category == 'unknown':
+                category = item.get('category')
+            if not category or category == 'unknown':
+                category = item.get('F_INDUSTRYNAME', item.get('category', 'unknown'))
             if not category:
                 category = 'unknown'
             
-            tender_id = item.get('F_TENDERNUMBER', '')
-            edrpou = item.get('EDRPOU', '')
+            tender_id = item.get('F_TENDERNUMBER', item.get('tender_number', ''))
+            edrpou = item.get('EDRPOU', item.get('edrpou', ''))
             
             if not tender_id or not edrpou:
                 continue
@@ -71,10 +131,18 @@ class MarketStatistics:
             date_str = item.get('DATEEND')
             if date_str:
                 try:
-                    date = datetime.strptime(date_str, "%d.%m.%Y")
-                    if not supplier_data['first_seen'] or date < supplier_data['first_seen']:
-                        supplier_data['first_seen'] = date
-                    cat_data['tender_dates'][tender_id] = date
+                    # Підтримка різних форматів дат
+                    if '.' in date_str:
+                        date = datetime.strptime(date_str, "%d.%m.%Y")
+                    elif '-' in date_str:
+                        date = datetime.strptime(date_str, "%Y-%m-%d")
+                    else:
+                        date = None
+                        
+                    if date:
+                        if not supplier_data['first_seen'] or date < supplier_data['first_seen']:
+                            supplier_data['first_seen'] = date
+                        cat_data['tender_dates'][tender_id] = date
                 except:
                     pass
             

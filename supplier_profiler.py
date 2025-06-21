@@ -566,7 +566,7 @@ class SupplierProfiler:
         
         for item in items:
             # ВИПРАВЛЕННЯ: Перетворюємо рядок на список
-            category = (item.get('industry') or item.get('F_INDUSTRYNAME'))
+            category = (item.get('category') or item.get('F_INDUSTRYNAME'))
             if not category:
                 categories = ['unknown']
             else:
