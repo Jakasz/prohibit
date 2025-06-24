@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 from tender_analysis_system import TenderAnalysisSystem
 from create_profiles_with_clusters import ProfileBuilderWithClusters
-from update_supplier_profiles_with_clusters import update_profiles_with_clusters_and_competitors
+from update_with_clusters import update_profiles_with_clusters_and_competitors
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

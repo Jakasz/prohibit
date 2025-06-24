@@ -26,7 +26,7 @@ class MarketStatistics:
         
         self.logger.info("✅ MarketStatistics ініціалізовано")
     
-    def calculate_market_statistics_from_cache(self, cache_file: str = "all_data_cache.pkl") -> Dict[str, Any]:
+    def calculate_market_statistics_from_cache(self, cache_file: str = "files/all_data_cache.pkl") -> Dict[str, Any]:
         """
         Розрахунок статистики з кешу замість бази даних
         """
@@ -530,7 +530,7 @@ class MarketStatistics:
             }
         }
     
-    def _save_statistics(self, filepath: str = "market_statistics.json"):
+    def _save_statistics(self, filepath: str = "files/market_statistics.json"):
         """Збереження статистики"""
         try:
             data = {
@@ -548,7 +548,7 @@ class MarketStatistics:
         except Exception as e:
             self.logger.error(f"❌ Помилка збереження статистики: {e}")
     
-    def load_statistics(self, filepath: str = "market_statistics.json") -> bool:
+    def load_statistics(self, filepath: str = "files/market_statistics.json") -> bool:
         """Завантаження збереженої статистики"""
         try:
             if not Path(filepath).exists():

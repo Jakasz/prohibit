@@ -37,7 +37,7 @@ if not profiles_loaded:
     print("⚠️ Профілі не знайдено. Створюємо нові...")
     
     # Імпортуємо та запускаємо створення
-    from update_supplier_profiles_with_clusters import ProfileBuilderWithClusters
+    from update_with_clusters import ProfileBuilderWithClusters
     
     builder = ProfileBuilderWithClusters(system.vector_db)
     profiles = builder.build_profiles_from_vector_db()

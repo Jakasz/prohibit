@@ -23,6 +23,7 @@ venv/
 
 # Ignore environment variable files
 .env
+.vscode
 output.json
 qdrant.exe
 tender_data.jsonl

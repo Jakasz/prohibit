@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 def main():
     # Перевірка наявності кешу
-    cache_file = "all_data_cache.pkl"
+    cache_file = "files/all_data_cache.pkl"
     
     if not Path(cache_file).exists():
         logger.error(f"❌ Файл {cache_file} не знайдено!")

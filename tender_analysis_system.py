@@ -21,7 +21,7 @@ import joblib
 # Qdrant для векторної бази
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
-from feature_extractor import FeatureExtractor
+from features.feature_extractor import FeatureExtractor
 
 class TenderAnalysisSystem:
     """
@@ -124,15 +124,15 @@ class TenderAnalysisSystem:
             self.logger.info("🔧 Ініціалізація підсистем...")
             
             # 1. Ініціалізація менеджера категорій
-            from category_manager import CategoryManager
+            from prediction.category_manager import CategoryManager
             self.categories_manager = CategoryManager(self.categories_file)
             
-            if Path("category_mappings.json").exists():            
-                self.categories_manager.load_category_mappings("category_mappings.json")
+            if Path("categories_map.json").exists():            
+                self.categories_manager.load_category_mappings("categories_map.json")
                 self.logger.info("✅ Завантажено маппінг категорій")
 
             # 2. Ініціалізація векторної бази
-            from vector_database import TenderVectorDB
+            from vector_db.vector_database import TenderVectorDB
             self.vector_db = TenderVectorDB(
                 embedding_model=self.embedding_model,
                 qdrant_host=self.qdrant_config['host'],
@@ -140,7 +140,7 @@ class TenderAnalysisSystem:
             )
             
             # 3. Ініціалізація ринкової статистики
-            from market_statistics import MarketStatistics
+            from profiles.market_statistics import MarketStatistics
             self.market_stats = MarketStatistics(
                 category_manager=self.categories_manager
             )
@@ -150,21 +150,21 @@ class TenderAnalysisSystem:
                 self.logger.info("📊 Статистика не знайдена. Буде створена при першому навчанні.")
             
             # 4. Ініціалізація профайлера постачальників
-            from supplier_profiler import SupplierProfiler
+            from profiles.supplier_profiler import SupplierProfiler
             self.supplier_profiler = SupplierProfiler(
                 categories_manager=self.categories_manager,
                 vector_db=self.vector_db
             )
             
             # 5. Ініціалізація аналізатора конкуренції
-            from competition_analyzer import CompetitionAnalyzer
+            from prediction.competition_analyzer import CompetitionAnalyzer
             self.competition_analyzer = CompetitionAnalyzer(
                 categories_manager=self.categories_manager,
                 vector_db=self.vector_db
             )
             
             # 6. Ініціалізація системи прогнозування
-            from prediction_engine import PredictionEngine
+            from prediction.prediction_engine import PredictionEngine
             self.predictor = PredictionEngine(
                 supplier_profiler=self.supplier_profiler,
                 competition_analyzer=self.competition_analyzer,
@@ -189,7 +189,8 @@ class TenderAnalysisSystem:
             return True
             
         except Exception as e:
-            self.logger.error(f"❌ Помилка ініціалізації: {e}")
+            # self.logger.error(f"❌ Помилка ініціалізації: {e}")
+            self.logger.error(e)
             return False
         
 
@@ -205,7 +206,7 @@ class TenderAnalysisSystem:
         
         self.logger.info("📊 Оновлення ринкової статистики...")
         
-        if use_cache and Path("all_data_cache.pkl").exists():
+        if use_cache and Path("files/all_data_cache.pkl").exists():
             # Використовуємо кеш
             self.logger.info("📂 Використання all_data_cache.pkl...")
             results = self.market_stats.calculate_market_statistics_from_cache("all_data_cache.pkl")

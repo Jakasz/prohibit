@@ -56,7 +56,7 @@ class UltraFastProfileBuilder:
             self.profiler.profiles = {}
         
         # 1. Спробуємо завантажити кешований дамп якщо є
-        cache_file = "all_data_cache.pkl"
+        cache_file = "files/all_data_cache.pkl"
         supplier_data = defaultdict(list)
         
         if os.path.exists(cache_file):

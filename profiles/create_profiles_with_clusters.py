@@ -17,7 +17,7 @@ class ProfileBuilderWithClusters:
         self.vector_db = vector_db
         self.use_cache = True
         self.category_mappings = self._load_category_mappings(category_mappings_file)
-        self.cache_file = "all_data_cache.pkl"
+        self.cache_file = "files/all_data_cache.pkl"
         self.profiles = {}
         
     def _load_category_mappings(self, filepath):
@@ -295,7 +295,7 @@ def create_or_update_profiles(system):
         
         if response.lower() == 'u':
             # Запускаємо оновлення
-            from update_supplier_profiles_with_clusters import update_profiles_with_clusters_and_competitors
+            from update_with_clusters import update_profiles_with_clusters_and_competitors
             update_profiles_with_clusters_and_competitors()
             return
     
