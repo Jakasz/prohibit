@@ -1,4 +1,5 @@
 # app.py
+from collections import defaultdict
 from flask import Flask, render_template, request, jsonify, session
 import json
 import logging
@@ -7,6 +8,8 @@ from pathlib import Path
 import os
 from functools import wraps
 import time
+
+import numpy as np
 
 # Імпорт вашої системи
 from tender_analysis_system import TenderAnalysisSystem
@@ -329,6 +332,210 @@ def get_supplier_info(edrpou):
     except Exception as e:
         logger.error(f"Помилка отримання профілю: {e}")
         return jsonify({'error': str(e)}), 500
+
+@app.route('/profiles')
+def profiles_page():
+    """Сторінка з профілями постачальників"""
+    return render_template('profiles.html')
+
+@app.route('/api/profiles')
+@require_initialized
+def get_profiles():
+    """API для отримання списку профілів"""
+    try:
+        # Параметри пагінації та фільтрації
+        page = int(request.args.get('page', 1))
+        per_page = int(request.args.get('per_page', 50))
+        search = request.args.get('search', '').strip()
+        sort_by = request.args.get('sort_by', 'win_rate')
+        sort_order = request.args.get('sort_order', 'desc')
+        
+        if not system.supplier_profiler or not hasattr(system.supplier_profiler, 'profiles'):
+            return jsonify({
+                'profiles': [],
+                'total': 0,
+                'page': page,
+                'per_page': per_page
+            })
+        
+        # Фільтрація профілів
+        filtered_profiles = []
+        for edrpou, profile in system.supplier_profiler.profiles.items():
+            # Пошук по ЄДРПОУ або назві
+            if search:
+                if search not in edrpou and search.lower() not in profile.name.lower():
+                    continue
+            
+            # Підготовка даних для відображення
+            profile_data = {
+                'edrpou': edrpou,
+                'name': profile.name,
+                'total_tenders': profile.metrics.total_tenders,
+                'won_tenders': profile.metrics.won_tenders,
+                'total_positions': profile.metrics.total_positions,
+                'won_positions': profile.metrics.won_positions,
+                'win_rate': round(profile.metrics.win_rate, 3),
+                'position_win_rate': round(profile.metrics.position_win_rate, 3),
+                'market_position': profile.market_position,
+                'reliability_score': round(profile.reliability_score, 3),
+                'specialization_score': round(profile.metrics.specialization_score, 3),
+                'categories_count': len(profile.categories),
+                'main_category': max(profile.categories.items(), key=lambda x: x[1].get('total', 0))[0] if profile.categories else 'Невідомо'
+            }
+            filtered_profiles.append(profile_data)
+        
+        # Сортування
+        reverse = sort_order == 'desc'
+        if sort_by in ['edrpou', 'name', 'main_category', 'market_position']:
+            filtered_profiles.sort(key=lambda x: x.get(sort_by, ''), reverse=reverse)
+        else:
+            filtered_profiles.sort(key=lambda x: x.get(sort_by, 0), reverse=reverse)
+        
+        # Пагінація
+        total = len(filtered_profiles)
+        start = (page - 1) * per_page
+        end = start + per_page
+        paginated_profiles = filtered_profiles[start:end]
+        
+        return jsonify({
+            'profiles': paginated_profiles,
+            'total': total,
+            'page': page,
+            'per_page': per_page,
+            'total_pages': (total + per_page - 1) // per_page
+        })
+        
+    except Exception as e:
+        logger.error(f"Помилка отримання профілів: {e}")
+        return jsonify({
+            'error': str(e),
+            'profiles': [],
+            'total': 0
+        }), 500
+
+@app.route('/api/profile/<edrpou>/detailed')
+@require_initialized
+def get_profile_detailed(edrpou):
+    """Детальна інформація про профіль постачальника"""
+    try:
+        if not system.supplier_profiler or not hasattr(system.supplier_profiler, 'profiles'):
+            return jsonify({'error': 'Профілі не завантажені'}), 404
+        
+        profile = system.supplier_profiler.profiles.get(edrpou)
+        if not profile:
+            return jsonify({'error': 'Постачальник не знайдений'}), 404
+        
+        # Підготовка детальної відповіді
+        response = {
+            'edrpou': edrpou,
+            'name': profile.name,
+            'metrics': {
+                'total_tenders': profile.metrics.total_tenders,
+                'won_tenders': profile.metrics.won_tenders,
+                'total_positions': profile.metrics.total_positions,
+                'won_positions': profile.metrics.won_positions,
+                'win_rate': round(profile.metrics.win_rate, 3),
+                'position_win_rate': round(profile.metrics.position_win_rate, 3),
+                'recent_win_rate': round(profile.metrics.recent_win_rate, 3),
+                'growth_rate': round(profile.metrics.growth_rate, 3),
+                'stability_score': round(profile.metrics.stability_score, 3),
+                'specialization_score': round(profile.metrics.specialization_score, 3),
+                'competition_resistance': round(profile.metrics.competition_resistance, 3)
+            },
+            'market_position': profile.market_position,
+            'reliability_score': round(profile.reliability_score, 3),
+            'profile_version': profile.profile_version,
+            'last_updated': profile.last_updated,
+            'competitive_advantages': profile.competitive_advantages,
+            'weaknesses': profile.weaknesses,
+            'categories': {},
+            'industries': {},
+            'brand_expertise': profile.brand_expertise[:10] if hasattr(profile, 'brand_expertise') else [],
+            'clusters': getattr(profile, 'clusters', []),
+            'risk_indicators': getattr(profile, 'risk_indicators', {}),
+            'has_risks': getattr(profile, 'has_risks', False),
+            'overall_risk_level': getattr(profile, 'overall_risk_level', 'low')
+        }
+        
+        # Категорії (топ 10)
+        for cat_name, cat_data in sorted(
+            profile.categories.items(), 
+            key=lambda x: x[1].get('total', 0), 
+            reverse=True
+        )[:10]:
+            response['categories'][cat_name] = {
+                'total': cat_data.get('total', 0),
+                'won': cat_data.get('won', 0),
+                'win_rate': round(cat_data.get('win_rate', 0), 3),
+                'revenue': round(cat_data.get('revenue', 0), 2),
+                'specialization': round(cat_data.get('specialization', 0), 3)
+            }
+        
+        # Індустрії (топ 5)
+        if hasattr(profile, 'industries'):
+            for ind_name, ind_data in sorted(
+                profile.industries.items(),
+                key=lambda x: x[1].get('total', 0),
+                reverse=True
+            )[:5]:
+                response['industries'][ind_name] = {
+                    'total': ind_data.get('total', 0),
+                    'won': ind_data.get('won', 0),
+                    'win_rate': round(ind_data.get('win_rate', 0), 3),
+                    'revenue': round(ind_data.get('revenue', 0), 2)
+                }
+        
+        # Топ конкуренти
+        if hasattr(profile, 'top_competitors'):
+            response['top_competitors'] = profile.top_competitors[:5]
+        
+        return jsonify(response)
+        
+    except Exception as e:
+        logger.error(f"Помилка отримання детального профілю: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/profiles/statistics')
+@require_initialized
+def get_profiles_statistics():
+    """Загальна статистика по профілях"""
+    try:
+        if not system.supplier_profiler or not hasattr(system.supplier_profiler, 'profiles'):
+            return jsonify({
+                'total_suppliers': 0,
+                'market_positions': {},
+                'avg_win_rate': 0,
+                'total_tenders': 0
+            })
+        
+        # Збір статистики
+        total_suppliers = len(system.supplier_profiler.profiles)
+        market_positions = defaultdict(int)
+        win_rates = []
+        total_tenders = 0
+        total_won = 0
+        
+        for profile in system.supplier_profiler.profiles.values():
+            market_positions[profile.market_position] += 1
+            win_rates.append(profile.metrics.win_rate)
+            total_tenders += profile.metrics.total_tenders
+            total_won += profile.metrics.won_tenders
+        
+        avg_win_rate = np.mean(win_rates) if win_rates else 0
+        
+        return jsonify({
+            'total_suppliers': total_suppliers,
+            'market_positions': dict(market_positions),
+            'avg_win_rate': round(avg_win_rate, 3),
+            'total_tenders': total_tenders,
+            'total_won': total_won,
+            'overall_win_rate': round(total_won / total_tenders, 3) if total_tenders > 0 else 0
+        })
+        
+    except Exception as e:
+        logger.error(f"Помилка отримання статистики: {e}")
+        return jsonify({'error': str(e)}), 500
+
 
 # --- Initialization before first request workaround ---
 @app.before_request
