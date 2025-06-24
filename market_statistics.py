@@ -411,6 +411,24 @@ class MarketStatistics:
                 'avg_competition': self._calculate_cluster_avg_competition(data['categories']),
                 # Інші метрики...
             }
+
+
+    def get_cluster_context(self, cluster_name: str) -> Dict[str, Any]:            
+        """Отримання контексту кластера для прогнозування"""            
+        if cluster_name not in self.cluster_stats:
+            # Повертаємо дефолтні значення
+            return {
+                'cluster_name': cluster_name,
+                'avg_suppliers_per_tender': 3.0,
+                'avg_new_supplier_win_rate': 0.2,
+                'avg_market_openness': 0.7,
+                'avg_entry_barrier': 0.5,
+                'cluster_complexity': 0.5
+            }
+            
+        return self.cluster_stats[cluster_name]
+
+
     
     def _calculate_cluster_avg_competition(self, categories: set) -> float:
         """Середня конкуренція в кластері"""
@@ -420,6 +438,18 @@ class MarketStatistics:
                 competitions.append(self.category_stats[cat]['avg_suppliers_per_tender'])
         
         return np.mean(competitions) if competitions else 0.0
+    
+    def get_category_cluster(self, category: str) -> Optional[str]:
+        """Визначення кластера для категорії"""
+        if not self.category_manager or not hasattr(self.category_manager, 'categories_map'):
+            return None
+        
+        for cluster_name, categories in self.category_manager.categories_map.items():
+            if category in categories:
+                return cluster_name
+        
+        return None    
+
     
     def get_category_context(self, category: str) -> Dict[str, Any]:
         """Отримання контексту категорії для прогнозування"""
@@ -453,12 +483,12 @@ class MarketStatistics:
             return 0.5  # Медіана за замовчуванням
         
         # Кеш-ключ
-        cache_key = f"{supplier_profile.get('edrpou', '')}_{category}"
+        cache_key = f"{supplier_profile.edrpou}_{category}"
         if cache_key in self.percentile_cache:
             return self.percentile_cache[cache_key]
         
         # Розрахунок
-        supplier_wr = supplier_profile.get('metrics', {}).get('win_rate', 0)
+        supplier_wr = supplier_profile.metrics.win_rate
         distribution = self.category_stats[category]['win_rate_distribution']
         
         # Підрахунок постачальників з гіршим win rate

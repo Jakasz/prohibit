@@ -566,7 +566,8 @@ class SupplierProfiler:
         
         for item in items:
             # ВИПРАВЛЕННЯ: Перетворюємо рядок на список
-            category = (item.get('category') or item.get('F_INDUSTRYNAME'))
+            category = (item.get('industry') or item.get('F_INDUSTRYNAME'))
+            nomenclature = item.get('item_name', '') 
             if not category:
                 categories = ['unknown']
             else:
@@ -576,7 +577,7 @@ class SupplierProfiler:
             for category in categories:
                 stats = category_stats[category]
                 stats['total'] += 1
-                stats['items'].append(category)
+                stats['items'].append(nomenclature)  # Додаємо назву позиції
 
                 if (item.get('won') or item.get('WON')):
                     stats['won'] += 1

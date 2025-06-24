@@ -44,13 +44,15 @@ class CategoryManager:
         # Дані для аналізу
         self.tender_history = []  # Історія для аналізу трендів
         self.supplier_category_performance = defaultdict(lambda: defaultdict(dict))
+        self.categories_map = {}  
         
         # Базові категорії (fallback)
         self.base_categories = self._init_base_categories()
         
         # Завантаження категорій з файлу
-        if categories_file:
-            self.load_categories_from_file(categories_file)
+        self.load_category_mappings()
+        # if categories_file:
+        #     self.load_categories_from_file(categories_file)
         
         self.logger.info("✅ CategoryManager ініціалізовано")
     
@@ -159,19 +161,19 @@ class CategoryManager:
         }
     
 
-    def load_category_mappings(self, mapping_file: str = "data/category_map.json"):
+    def load_category_mappings(self, mapping_file: str = "data/categories_map.json"):
         """Завантаження маппінгу категорій"""
         try:
             with open(mapping_file, 'r', encoding='utf-8') as f:
-                self.category_mappings = json.load(f)
+                self.categories_map = json.load(f)
             
             # Створюємо зворотній mapping
             self.reverse_mapping = {}
-            for canonical, variants in self.category_mappings.items():
+            for canonical, variants in self.categories_map.items():
                 for variant in variants:
                     self.reverse_mapping[variant.lower().strip()] = canonical
             
-            self.logger.info(f"✅ Завантажено {len(self.category_mappings)} канонічних категорій")
+            self.logger.info(f"✅ Завантажено {len(self.categories_map)} канонічних категорій")
             return True
         except Exception as e:
             self.logger.error(f"❌ Помилка завантаження маппінгу: {e}")
