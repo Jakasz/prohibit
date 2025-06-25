@@ -7,7 +7,7 @@ from collections import defaultdict
 from datetime import datetime
 import pickle
 from tqdm import tqdm
-from supplier_profiler import SupplierProfiler
+from profiles.supplier_profiler import SupplierProfiler
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

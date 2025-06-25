@@ -49,27 +49,28 @@ class TenderVectorDB:
         try:
             self.client = QdrantClient(host=qdrant_host, port=qdrant_port)
             self.logger.info(f"✅ Підключено до Qdrant: {qdrant_host}:{qdrant_port}")
+                    # Кеш для уникнення повторних обчислень
+            self.embedding_cache = {}
+            self.hash_cache = {}  # Для відстеження унікальності записів
+            
+            # Статистика
+            self.stats = {
+                'total_indexed': 0,
+                'total_updated': 0,
+                'total_searches': 0,
+                'last_index_time': None,
+                'last_update_time': None
+            }
+            
+            # Ініціалізація колекції
+            self._init_collection()
         except Exception as e:
             self.logger.error(f"❌ Помилка підключення до Qdrant: {e}")
-            raise
+            
         
 
         
-        # Кеш для уникнення повторних обчислень
-        self.embedding_cache = {}
-        self.hash_cache = {}  # Для відстеження унікальності записів
-        
-        # Статистика
-        self.stats = {
-            'total_indexed': 0,
-            'total_updated': 0,
-            'total_searches': 0,
-            'last_index_time': None,
-            'last_update_time': None
-        }
-        
-        # Ініціалізація колекції
-        self._init_collection()
+
 
     def _create_minimal_payload_indexes(self):
         """Створення МІНІМАЛЬНИХ індексів тільки для критичних полів"""

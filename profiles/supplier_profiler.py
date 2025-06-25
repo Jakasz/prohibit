@@ -34,7 +34,7 @@ class SupplierProfile:
     name: str
     metrics: SupplierMetrics = field(default_factory=SupplierMetrics)
     categories: Dict[str, Dict[str, Any]] = field(default_factory=dict)
-    industries: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    # industries: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     clusters: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     cpv_experience: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     brand_expertise: List[str] = field(default_factory=list)
@@ -69,7 +69,6 @@ class SupplierProfile:
                 'competition_resistance': self.metrics.competition_resistance
             },
             'categories': self.categories,
-            'industries': self.industries,
             'clusters' : self.clusters,  
             'cpv_experience': self.cpv_experience,
             'brand_expertise': self.brand_expertise,
@@ -254,7 +253,6 @@ class SupplierProfiler:
 
         # Інші поля профілю
         profile.categories = supplier_data.get('categories', {})
-        profile.industries = supplier_data.get('industries', {})
         profile.cpv_experience = supplier_data.get('cpv_experience', {})
         profile.brand_expertise = supplier_data.get('brand_expertise', [])
         profile.competitive_advantages = supplier_data.get('competitive_advantages', [])
@@ -306,7 +304,6 @@ class SupplierProfiler:
             
             # Відновлення інших полів
             profile.categories = profile_data.get('categories', {})
-            profile.industries = profile_data.get('industries', {})
             profile.cpv_experience = profile_data.get('cpv_experience', {})
             profile.brand_expertise = profile_data.get('brand_expertise', [])
             profile.competitive_advantages = profile_data.get('competitive_advantages', [])
@@ -357,7 +354,7 @@ class SupplierProfiler:
         # Розрахунок метрик
         self._calculate_metrics(profile, items)
         self._analyze_categories(profile, items)
-        self._analyze_industries(profile, items)
+        # self._analyze_industries(profile, items)
         self._analyze_cpv_experience(profile, items)
         self._analyze_brand_expertise(profile, items)
         self._determine_market_position(profile)
@@ -607,31 +604,31 @@ class SupplierProfiler:
             profile.metrics.specialization_score = sum(s**2 for s in shares)
 
     
-    def _analyze_industries(self, profile: SupplierProfile, data: List[Dict]):
-        """Аналіз індустрій постачальника"""
-        industry_stats = defaultdict(lambda: {
-            'total': 0, 'won': 0, 'revenue': 0.0, 'win_rate': 0.0
-        })
+    # def _analyze_industries(self, profile: SupplierProfile, data: List[Dict]):
+    #     """Аналіз індустрій постачальника"""
+    #     industry_stats = defaultdict(lambda: {
+    #         'total': 0, 'won': 0, 'revenue': 0.0, 'win_rate': 0.0
+    #     })
         
-        for item in data:
-            industry = item.get('F_INDUSTRYNAME', 'unknown')
-            stats = industry_stats[industry]
-            stats['total'] += 1
+    #     for item in data:
+    #         industry = item.get('F_INDUSTRYNAME', 'unknown')
+    #         stats = industry_stats[industry]
+    #         stats['total'] += 1
             
-            if item.get('won'):
-                stats['won'] += 1
-                try:
-                    budget = float(item.get('budget', 0))
-                    stats['revenue'] += budget
-                except:
-                    pass
+    #         if item.get('won'):
+    #             stats['won'] += 1
+    #             try:
+    #                 budget = float(item.get('budget', 0))
+    #                 stats['revenue'] += budget
+    #             except:
+    #                 pass
         
-        # Розрахунок win rate
-        for industry, stats in industry_stats.items():
-            if stats['total'] > 0:
-                stats['win_rate'] = stats['won'] / stats['total']
+    #     # Розрахунок win rate
+    #     for industry, stats in industry_stats.items():
+    #         if stats['total'] > 0:
+    #             stats['win_rate'] = stats['won'] / stats['total']
         
-        profile.industries = dict(industry_stats)
+    #     profile.industries = dict(industry_stats)
     
     def _analyze_cpv_experience(self, profile: SupplierProfile, data: List[Dict]):
         """Аналіз досвіду з CPV кодами"""
@@ -988,12 +985,12 @@ class SupplierProfiler:
             category_similarity = len(cats1.intersection(cats2)) / len(cats1.union(cats2))
             similarity_scores.append(category_similarity)
         
-        # 2. Схожість індустрій
-        ind1 = set(profile1.industries.keys())
-        ind2 = set(profile2.industries.keys())
-        if ind1 or ind2:
-            industry_similarity = len(ind1.intersection(ind2)) / len(ind1.union(ind2))
-            similarity_scores.append(industry_similarity)
+        # # 2. Схожість індустрій
+        # ind1 = set(profile1.industries.keys())
+        # ind2 = set(profile2.industries.keys())
+        # if ind1 or ind2:
+        #     industry_similarity = len(ind1.intersection(ind2)) / len(ind1.union(ind2))
+        #     similarity_scores.append(industry_similarity)
         
         # 3. Схожість метрик
         metric_diff = abs(profile1.metrics.win_rate - profile2.metrics.win_rate)
@@ -1078,7 +1075,7 @@ class SupplierProfiler:
                 
                 # Відновлення інших полів
                 profile.categories = data.get('categories', {})
-                profile.industries = data.get('industries', {})
+                # profile.industries = data.get('industries', {})
                 profile.cpv_experience = data.get('cpv_experience', {})
                 profile.brand_expertise = data.get('brand_expertise', [])
                 profile.competitive_advantages = data.get('competitive_advantages', [])
