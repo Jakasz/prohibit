@@ -12,8 +12,7 @@ from pathlib import Path
 required_files = [
     'tender_analysis_system.py',
     'category_manager.py',
-    'supplier_profiler.py',
-    'competition_analyzer.py',
+    'supplier_profiler.py',    
     'prediction_engine.py',
     'feature_extractor.py',
     'vector_database.py'

@@ -1091,3 +1091,100 @@ class SupplierProfiler:
             
         except Exception as e:
             self.logger.error(f"Помилка завантаження профілів: {e}")
+
+    def get_category_leaders(self, category: str, limit: int = 10) -> List[Dict]:
+        """Визначає топ постачальників в категорії"""
+        leaders = []
+        
+        # Збираємо постачальників з цієї категорії
+        suppliers_in_category = set()
+        for edrpou, profile in self.profiles.items():
+            if category in profile.categories:
+                suppliers_in_category.add(edrpou)
+        
+        # Формуємо список лідерів
+        for edrpou in suppliers_in_category:
+            profile = self.profiles[edrpou]
+            cat_data = profile.categories.get(category, {})
+            
+            leaders.append({
+                'supplier_id': edrpou,
+                'name': profile.name,
+                'total_bids': cat_data.get('total', 0),
+                'wins': cat_data.get('won', 0),
+                'win_rate': cat_data.get('win_rate', 0),
+                'market_share': 0  # Буде розраховано далі
+            })
+        
+        # Рахуємо частку ринку
+        total_wins = sum(l['wins'] for l in leaders)
+        if total_wins > 0:
+            for leader in leaders:
+                leader['market_share'] = round(leader['wins'] / total_wins, 3)
+        
+        # Сортуємо по кількості виграшів
+        leaders.sort(key=lambda x: (x['wins'], x['win_rate']), reverse=True)
+        
+        return leaders[:limit]
+
+    def get_supplier_market_share(self, supplier_id: str, category: str = None) -> float:
+        """Розраховує частку ринку постачальника"""
+        if supplier_id not in self.profiles:
+            return 0.0
+            
+        if category:
+            leaders = self.get_category_leaders(category, limit=100)
+            for leader in leaders:
+                if leader['supplier_id'] == supplier_id:
+                    return leader['market_share']
+            return 0.0
+        else:
+            # Загальна частка
+            total_wins = sum(p.metrics.won_positions for p in self.profiles.values())
+            if total_wins == 0:
+                return 0.0
+            supplier_wins = self.profiles[supplier_id].metrics.won_positions
+            return round(supplier_wins / total_wins, 3)
+
+    def get_competitive_position(self, supplier_id: str, category: str = None) -> Dict:
+        """Оцінює конкурентну позицію постачальника"""
+        if supplier_id not in self.profiles:
+            return {'position': 'unknown', 'metrics': {}}
+            
+        profile = self.profiles[supplier_id]
+        
+        # SWOT аналіз
+        strengths = []
+        weaknesses = []
+        
+        if profile.metrics.win_rate >= 0.3:
+            strengths.append(f'Високий win rate: {profile.metrics.win_rate:.1%}')
+        else:
+            weaknesses.append(f'Низький win rate: {profile.metrics.win_rate:.1%}')
+            
+        if profile.metrics.stability_score >= 0.7:
+            strengths.append('Стабільна діяльність')
+            
+        if profile.metrics.specialization_score >= 0.5:
+            strengths.append('Чітка спеціалізація')
+            
+        market_share = self.get_supplier_market_share(supplier_id, category)
+        
+        return {
+            'supplier_id': supplier_id,
+            'position': profile.market_position,
+            'strengths': strengths,
+            'weaknesses': weaknesses,
+            'metrics': {
+                'market_share': market_share,
+                'win_rate': profile.metrics.win_rate,
+                'total_tenders': profile.metrics.total_tenders
+            }
+        }
+
+    def get_competitive_landscape(self, category: str) -> Dict:
+        """Конкурентний ландшафт категорії"""
+        return {
+            'market_leaders': self.get_category_leaders(category, limit=5),
+            'total_suppliers': len([p for p in self.profiles.values() if category in p.categories])
+        }

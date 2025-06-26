@@ -60,8 +60,7 @@ class TenderAnalysisSystem:
         
         # Підсистеми (будуть ініціалізовані пізніше)
         self.vector_db = None
-        self.predictor = None
-        self.competition_analyzer = None
+        self.predictor = None        
         self.supplier_profiler = None
         self.feature_extractor = None
         
@@ -156,25 +155,17 @@ class TenderAnalysisSystem:
                 vector_db=self.vector_db
             )
             
-            # 5. Ініціалізація аналізатора конкуренції
-            from prediction.competition_analyzer import CompetitionAnalyzer
-            self.competition_analyzer = CompetitionAnalyzer(
-                categories_manager=self.categories_manager,
-                vector_db=self.vector_db
-            )
             
             # 6. Ініціалізація системи прогнозування
             from prediction.prediction_engine import PredictionEngine
             self.predictor = PredictionEngine(
                 supplier_profiler=self.supplier_profiler,
-                competition_analyzer=self.competition_analyzer,
                 categories_manager=self.categories_manager
             )
             
             # 7. Ініціалізація екстрактора ознак
             self.feature_extractor = FeatureExtractor(
-                categories_manager=self.categories_manager,
-                competition_analyzer=self.competition_analyzer
+                categories_manager=self.categories_manager
             )
             
             # Передаємо market_stats в feature_extractor
@@ -209,7 +200,7 @@ class TenderAnalysisSystem:
         if use_cache and Path("files/all_data_cache.pkl").exists():
             # Використовуємо кеш
             self.logger.info("📂 Використання all_data_cache.pkl...")
-            results = self.market_stats.calculate_market_statistics_from_cache("all_data_cache.pkl")
+            results = self.market_stats.calculate_market_statistics_from_cache("files/all_data_cache.pkl")
         else:
             # Отримання історичних даних з бази
             historical_data = []
@@ -428,15 +419,7 @@ class TenderAnalysisSystem:
             # 1. Основні прогнози
             predictions = self.predictor.predict_tender(tender_data, supplier_profiles=self.supplier_profiler.profiles)
             results['predictions'] = predictions
-            
-            # 2. Аналіз конкуренції (якщо потрібно)
-            if include_competition_analysis:
-                competition_data = {}
-                for item in tender_data:
-                    tender_num = item.get('F_TENDERNUMBER')
-                    if tender_num:
-                        competition_data[tender_num] = self.competition_analyzer.analyze_tender_competition(item)
-                results['competition_analysis'] = competition_data
+                       
             
             # 3. Пошук схожих тендерів (якщо потрібно)
             if include_similar_tenders:
@@ -481,10 +464,7 @@ class TenderAnalysisSystem:
             'category_performance': {},
             'recommendations': []
         }
-        
-        # Аналіз конкуренції
-        if include_competition:
-            result['competition_metrics'] = self.competition_analyzer.get_supplier_competition_metrics(edrpou)
+           
         
         # Аналіз по категоріях
         result['category_performance'] = self.categories_manager.get_supplier_category_performance(edrpou)
@@ -502,8 +482,7 @@ class TenderAnalysisSystem:
             raise RuntimeError("Система не ініціалізована")
         
         return {
-            'category_info': self.categories_manager.get_category_info(category_id),
-            'competition_metrics': self.competition_analyzer.get_category_competition_metrics(category_id),
+            'category_info': self.categories_manager.get_category_info(category_id),            
             'top_suppliers': self.supplier_profiler.get_top_suppliers_in_category(category_id),
             'market_trends': self._analyze_category_trends(category_id)
         }
@@ -583,8 +562,7 @@ class TenderAnalysisSystem:
             'system_state': self.export_system_state(),
             'categories_manager': self.categories_manager.export_state() if self.categories_manager else None,
             'supplier_profiler': self.supplier_profiler.export_state() if self.supplier_profiler else None,
-            'predictor': self.predictor.export_state() if self.predictor else None,
-            'competition_analyzer': self.competition_analyzer.export_state() if self.competition_analyzer else None
+            'predictor': self.predictor.export_state() if self.predictor else None            
         }
         
         joblib.dump(system_data, filepath)
@@ -606,10 +584,7 @@ class TenderAnalysisSystem:
             self.supplier_profiler.load_state(system_data['supplier_profiler'])
         
         if system_data.get('predictor'):
-            self.predictor.load_state(system_data['predictor'])
-            
-        if system_data.get('competition_analyzer'):
-            self.competition_analyzer.load_state(system_data['competition_analyzer'])
+            self.predictor.load_state(system_data['predictor'])                
         
         # Відновлення основного стану
         system_state = system_data.get('system_state', {})

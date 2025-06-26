@@ -11,9 +11,8 @@ import json
 class FeatureExtractor:
     """Клас для вилучення ознак з даних тендерів"""
     
-    def __init__(self, categories_manager, competition_analyzer, brands_file='data/brands.json'):
-        self.category_manager = categories_manager
-        self.competition_analyzer = competition_analyzer
+    def __init__(self, categories_manager,  brands_file='data/brands.json'):
+        self.category_manager = categories_manager        
         self.logger = logging.getLogger(__name__)
         self.feature_names = []
         self.market_stats = None  # Буде ініціалізовано пізніше

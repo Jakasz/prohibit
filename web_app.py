@@ -106,10 +106,10 @@ def initialize_system():
         initialization_status['message'] = 'Завантаження ринкової статистики...'
         initialization_status['progress'] = 90
         
-        # Завантаження маркет статистики
-        if hasattr(system, 'market_stats') and Path("market_statistics.json").exists():
-            system.market_stats.load_statistics()
-            logger.info("✅ Завантажено ринкову статистику")
+        # # Завантаження маркет статистики
+        # if hasattr(system, 'market_stats') and Path("market_statistics.json").exists():
+        #     system.market_stats.load_statistics()
+        #     logger.info("✅ Завантажено ринкову статистику")
         
         initialization_status['is_initialized'] = True
         initialization_status['is_initializing'] = False
@@ -196,15 +196,46 @@ def predict():
         # Обробка результатів
         if predictions and len(predictions) > 0:
             result = predictions[0]
+
+            # Інформація про кластер
+            cluster_info = None
+            if hasattr(system, 'category_mapper'):
+                cluster_id = system.category_mapper.get_cluster_id(data['industry_name'])
+                if cluster_id:
+                    cluster_info = {
+                        'cluster_id': cluster_id,
+                        'cluster_name': system.category_mapper.get_cluster_name(cluster_id),
+                        'related_categories': system.category_mapper.get_related_categories(data['industry_name'])[:5]
+                    }
             
-            # Аналіз конкуренції (якщо доступно)
-            competition_analysis = None
-            if hasattr(system, 'competition_analyzer'):
+            # Конкурентний контекст
+            competitive_context = None
+            if hasattr(system, 'market_stats'):
                 try:
-                    competition_analysis = system.competition_analyzer.analyze_tender_competition(test_tender)
+                    analytics = system.market_stats.get_category_analytics(data['industry_name'])
+                    competitive_context = {
+                        'category_competition': analytics.get('competition_intensity', 0),
+                        'market_concentration': analytics.get('market_concentration', 0),
+                        'entry_barriers': analytics.get('entry_barriers', {})
+                    }
                 except:
                     pass
             
+            # І далі в response додати:
+            response = {
+                'success': True,
+                'prediction': {
+                    'probability': result['probability'],
+                    'confidence': result['confidence'],
+                    'risk_factors': result.get('risk_factors', [])
+                },
+                'supplier_info': {
+                    # ... існуючі поля ...
+                },
+                'cluster_info': cluster_info,  # НОВЕ
+                'competitive_context': competitive_context,  # НОВЕ                
+                'processing_time': round(prediction_time, 3)
+            }                
             response = {
                 'success': True,
                 'prediction': {
@@ -218,8 +249,7 @@ def predict():
                     'total_tenders': supplier_profile.metrics.total_tenders if supplier_profile else 0,
                     'win_rate': supplier_profile.metrics.win_rate if supplier_profile else 0,
                     'market_position': supplier_profile.market_position if supplier_profile else 'unknown'
-                },
-                'competition': competition_analysis if competition_analysis else None,
+                },                
                 'processing_time': round(prediction_time, 3)
             }
             
@@ -505,7 +535,9 @@ def get_profiles_statistics():
                 'total_suppliers': 0,
                 'market_positions': {},
                 'avg_win_rate': 0,
-                'total_tenders': 0
+                'total_tenders': 0,
+                'total_categories': 0,
+                'total_clusters': 0
             })
         
         # Збір статистики
@@ -515,11 +547,23 @@ def get_profiles_statistics():
         total_tenders = 0
         total_won = 0
         
+        # Збір унікальних категорій та кластерів
+        unique_categories = set()
+        unique_clusters = set()
+        
         for profile in system.supplier_profiler.profiles.values():
             market_positions[profile.market_position] += 1
             win_rates.append(profile.metrics.win_rate)
             total_tenders += profile.metrics.total_tenders
             total_won += profile.metrics.won_tenders
+            
+            # Додаємо категорії
+            if hasattr(profile, 'categories') and profile.categories:
+                unique_categories.update(profile.categories.keys())
+            
+            # Додаємо кластери
+            if hasattr(profile, 'clusters') and profile.clusters:
+                unique_clusters.update(profile.clusters)
         
         avg_win_rate = np.mean(win_rates) if win_rates else 0
         
@@ -529,12 +573,336 @@ def get_profiles_statistics():
             'avg_win_rate': round(avg_win_rate, 3),
             'total_tenders': total_tenders,
             'total_won': total_won,
-            'overall_win_rate': round(total_won / total_tenders, 3) if total_tenders > 0 else 0
+            'overall_win_rate': round(total_won / total_tenders, 3) if total_tenders > 0 else 0,
+            'total_categories': len(unique_categories),
+            'total_clusters': len(unique_clusters)
         })
         
     except Exception as e:
         logger.error(f"Помилка отримання статистики: {e}")
         return jsonify({'error': str(e)}), 500
+
+
+@app.route('/statistics')
+def statistics_page():
+    """Сторінка статистики системи"""
+    return render_template('statistics.html')
+
+@app.route('/api/system/statistics')
+@require_initialized
+def get_system_statistics():
+    """API для отримання загальної статистики системи"""
+    try:
+        stats = {
+            'total_suppliers': 0,
+            'total_tenders': 0,
+            'total_won': 0,
+            'total_categories': 0,
+            'total_clusters': 0,
+            'avg_win_rate': 0,
+            'db_size': 94440000,
+            'model_accuracy': 0.69,  # Можна отримати з system.model_performance якщо є
+            'market_positions': {},
+            'top_categories': [],
+            'last_training_date': None,
+            'profiles_updated': None
+        }
+        
+        # Збір статистики з профілів
+        if system.supplier_profiler and hasattr(system.supplier_profiler, 'profiles'):
+            profiles = system.supplier_profiler.profiles
+            stats['total_suppliers'] = len(profiles)
+            
+            # Збір даних по профілях
+            market_positions = defaultdict(int)
+            win_rates = []
+            total_tenders = 0
+            total_won = 0
+            unique_categories = set()
+            unique_clusters = set()
+            category_counts = defaultdict(int)
+            
+            for profile in profiles.values():
+                # Позиції на ринку
+                market_positions[profile.market_position] += 1
+                
+                # Win rates
+                win_rates.append(profile.metrics.win_rate)
+                
+                # Тендери
+                total_tenders += profile.metrics.total_tenders
+                total_won += profile.metrics.won_tenders
+                
+                # Категорії
+                if hasattr(profile, 'categories') and profile.categories:
+                    unique_categories.update(profile.categories.keys())
+                    for cat_name, cat_data in profile.categories.items():
+                        category_counts[cat_name] += cat_data.get('total', 0)
+                
+                # Кластери
+                if hasattr(profile, 'clusters') and profile.clusters:
+                    unique_clusters.update(profile.clusters)
+            
+            stats['total_tenders'] = total_tenders
+            stats['total_won'] = total_won
+            stats['total_categories'] = len(unique_categories)
+            stats['total_clusters'] = len(unique_clusters)
+            stats['avg_win_rate'] = np.mean(win_rates) if win_rates else 0
+            stats['market_positions'] = dict(market_positions)
+            
+            # Топ категорії
+            top_cats = sorted(category_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+            stats['top_categories'] = [{'name': name, 'count': count} for name, count in top_cats]
+        
+        # Розмір БД
+        if system.vector_db:
+            try:
+                stats['db_size'] = system.vector_db.get_collection_size()
+            except:
+                pass
+        
+        # Дати оновлення
+        if hasattr(system, 'system_metrics'):
+            stats['last_training_date'] = system.system_metrics.get('last_training_date')
+        
+        # Дата оновлення профілів (беремо з останнього профілю)
+        if system.supplier_profiler and hasattr(system.supplier_profiler, 'profiles'):
+            latest_update = None
+            for profile in system.supplier_profiler.profiles.values():
+                if hasattr(profile, 'last_updated') and profile.last_updated:
+                    try:
+                        profile_date = datetime.fromisoformat(profile.last_updated.replace('Z', '+00:00'))
+                        if not latest_update or profile_date > latest_update:
+                            latest_update = profile_date
+                    except:
+                        pass
+            if latest_update:
+                stats['profiles_updated'] = latest_update.isoformat()
+        
+        return jsonify(stats)
+        
+    except Exception as e:
+        logger.error(f"Помилка отримання статистики системи: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/category_analytics/<category_id>')
+@require_initialized
+def get_category_analytics(category_id):
+    """Повертає комплексну аналітику по категорії"""
+    try:
+        # Отримуємо аналітику з MarketStatistics
+        analytics = system.market_stats.get_category_analytics(category_id)
+        
+        # Отримуємо інформацію про кластер
+        cluster_info = None
+        if hasattr(system, 'category_mapper'):
+            cluster_id = system.category_mapper.get_cluster_id(category_id)
+            if cluster_id:
+                cluster_info = {
+                    'cluster_id': cluster_id,
+                    'cluster_name': system.category_mapper.get_cluster_name(cluster_id),
+                    'related_categories': system.category_mapper.get_cluster_categories(cluster_id)
+                }
+        
+        # Отримуємо конкурентний ландшафт
+        competitive_landscape = None
+        if hasattr(system, 'supplier_profiler'):
+            competitive_landscape = system.supplier_profiler.get_competitive_landscape(category_id)
+        
+        return jsonify({
+            'success': True,
+            'category_id': category_id,
+            'analytics': analytics,
+            'cluster_info': cluster_info,
+            'competitive_landscape': competitive_landscape
+        })
+        
+    except Exception as e:
+        logger.error(f"Помилка отримання аналітики категорії: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/supplier/<supplier_id>/competitive_position')
+@require_initialized
+def get_supplier_competitive_position(supplier_id):
+    """Отримує конкурентну позицію постачальника"""
+    try:
+        category = request.args.get('category', None)
+        
+        # Отримуємо конкурентну позицію
+        position = system.supplier_profiler.get_competitive_position(supplier_id, category)
+        
+        # Частка ринку
+        market_share = system.supplier_profiler.get_supplier_market_share(supplier_id, category)
+        
+        # Лідери в категорії (якщо вказана)
+        category_leaders = None
+        if category:
+            category_leaders = system.supplier_profiler.get_category_leaders(category, limit=5)
+        
+        return jsonify({
+            'success': True,
+            'supplier_id': supplier_id,
+            'competitive_position': position,
+            'market_share': market_share,
+            'category_leaders': category_leaders
+        })
+        
+    except Exception as e:
+        logger.error(f"Помилка отримання конкурентної позиції: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/category/<category_id>/leaders')
+@require_initialized
+def get_category_leaders(category_id):
+    """Отримує лідерів категорії"""
+    try:
+        limit = int(request.args.get('limit', 10))
+        
+        leaders = system.supplier_profiler.get_category_leaders(category_id, limit)
+        
+        # Додаємо детальну інформацію про кожного лідера
+        detailed_leaders = []
+        for leader in leaders:
+            supplier_id = leader['supplier_id']
+            
+            # Отримуємо профіль якщо є
+            profile_info = None
+            if hasattr(system.supplier_profiler, 'profiles'):
+                profile = system.supplier_profiler.profiles.get(supplier_id)
+                if profile:
+                    profile_info = {
+                        'name': profile.name,
+                        'edrpou': supplier_id,
+                        'reliability_score': profile.reliability_score
+                    }
+            
+            detailed_leaders.append({
+                **leader,
+                'profile': profile_info
+            })
+        
+        return jsonify({
+            'success': True,
+            'category_id': category_id,
+            'leaders': detailed_leaders,
+            'total_suppliers': len(system.supplier_profiler.category_suppliers.get(category_id, set()))
+        })
+        
+    except Exception as e:
+        logger.error(f"Помилка отримання лідерів категорії: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/clusters')
+@require_initialized
+def get_clusters():
+    """Отримує всі кластери категорій"""
+    try:
+        if not hasattr(system, 'category_mapper'):
+            return jsonify({
+                'success': False,
+                'error': 'Category mapper not initialized'
+            }), 500
+        
+        hierarchy = system.category_mapper.get_category_hierarchy()
+        
+        return jsonify({
+            'success': True,
+            'clusters': hierarchy,
+            'total_clusters': len(hierarchy)
+        })
+        
+    except Exception as e:
+        logger.error(f"Помилка отримання кластерів: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/market_anomalies')
+@require_initialized
+def get_market_anomalies():
+    """Отримує ринкові аномалії"""
+    try:
+        limit = int(request.args.get('limit', 10))
+        categories = []
+        
+        # Збираємо аномалії з різних категорій
+        all_anomalies = []
+        
+        if hasattr(system.market_stats, 'category_stats'):
+            for category in list(system.market_stats.category_stats.keys())[:20]:  # Перевіряємо топ 20
+                analytics = system.market_stats.get_category_analytics(category)
+                if analytics.get('anomalies'):
+                    for anomaly in analytics['anomalies']:
+                        all_anomalies.append({
+                            'category': category,
+                            **anomaly
+                        })
+        
+        # Сортуємо по важливості
+        all_anomalies.sort(key=lambda x: x.get('value', 0), reverse=True)
+        
+        return jsonify({
+            'success': True,
+            'anomalies': all_anomalies[:limit],
+            'total_found': len(all_anomalies)
+        })
+        
+    except Exception as e:
+        logger.error(f"Помилка отримання аномалій: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@app.route('/api/market_overview')
+@require_initialized
+def get_market_overview():
+    """Огляд ринку з конкурентною аналітикою"""
+    try:
+        # Загальна концентрація ринку
+        overall_concentration = system.market_stats.get_overall_concentration()
+        
+        # Найбільш конкурентні категорії
+        competitive_categories = system.market_stats.get_most_competitive_categories(10)
+        
+        # Ринкові тренди
+        market_trends = system.market_stats.get_market_trends()
+        
+        # Статистика по кластерах
+        cluster_stats = None
+        if hasattr(system, 'category_mapper'):
+            cluster_stats = system.category_mapper.get_statistics()
+        
+        return jsonify({
+            'success': True,
+            'market_concentration': overall_concentration,
+            'competitive_categories': competitive_categories,
+            'market_trends': market_trends,
+            'cluster_statistics': cluster_stats,
+            'timestamp': datetime.now().isoformat()
+        })
+        
+    except Exception as e:
+        logger.error(f"Помилка отримання огляду ринку: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 
+
+
+
 
 
 # --- Initialization before first request workaround ---

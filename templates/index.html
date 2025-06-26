@@ -387,6 +387,40 @@
         <i class="fas fa-moon" id="themeIcon"></i>
     </button>
 
+    <!-- Navigation Menu -->
+    <div style="position: fixed; top: 20px; left: 20px; z-index: 1000;">
+        <div class="dropdown">
+            <button class="btn btn-primary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false" style="background: var(--primary-color); border: none;">
+                <i class="fas fa-bars"></i> Меню
+            </button>
+            <ul class="dropdown-menu">
+                <li><a class="dropdown-item active" href="/"><i class="fas fa-home"></i> Головна</a></li>
+                <li><a class="dropdown-item" href="/profiles"><i class="fas fa-users"></i> Профілі постачальників</a></li>
+                <li><a class="dropdown-item" href="/statistics"><i class="fas fa-chart-bar"></i> Статистика системи</a></li>
+                <li><hr class="dropdown-divider"></li>
+                <li><a class="dropdown-item" href="#" onclick="showAbout()"><i class="fas fa-info-circle"></i> Про систему</a></li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+    // Показати інформацію про систему
+    function showAbout() {
+        alert(`Система прогнозування тендерів v1.0
+        
+        Розроблено для аналізу та прогнозування результатів тендерів з використанням машинного навчання.
+
+        Основні можливості:
+        • Прогнозування ймовірності перемоги в тендерах
+        • Аналіз профілів постачальників
+        • Статистика по категоріях та кластерах
+        • Аналіз конкуренції
+
+        Період даних: 01.01.2023 - 01.05.2025`);
+            }
+        </script>
+
+
     <!-- Loading Overlay -->
     <div class="loading-overlay" id="loadingOverlay">
         <div class="loading-content">

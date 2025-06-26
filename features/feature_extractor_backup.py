@@ -11,9 +11,8 @@ import json
 class FeatureExtractorBackup:
     """Клас для вилучення ознак з даних тендерів"""
     
-    def __init__(self, categories_manager, competition_analyzer, brands_file='data/brands.json'):
-        self.category_manager = categories_manager
-        self.competition_analyzer = competition_analyzer
+    def __init__(self, categories_manager, brands_file='data/brands.json'):
+        self.category_manager = categories_manager        
         self.logger = logging.getLogger(__name__)
         self.feature_names = []
         
@@ -71,24 +70,6 @@ class FeatureExtractorBackup:
                        'supplier_growth_rate', 'supplier_reliability', 'supplier_category_experience',
                        'supplier_category_win_rate']:
                 features[key] = 0.0
-        
-        # # 4. Конкурентні ознаки
-        # try:
-        #     competition_metrics = self.competition_analyzer.calculate_competition_metrics(
-        #         features['primary_category']
-        #     )
-        #     features['competition_intensity'] = competition_metrics.intensity
-        #     features['market_concentration'] = competition_metrics.market_concentration
-        #     features['entry_barrier'] = competition_metrics.entry_barrier
-        #     features['price_volatility'] = competition_metrics.price_volatility
-        #     features['avg_participants'] = competition_metrics.avg_participants
-        #     features['market_stability'] = competition_metrics.market_stability
-        # except:
-        #     # Дефолтні значення при помилці
-        #     for key in ['competition_intensity', 'market_concentration', 'entry_barrier',
-        #                'price_volatility', 'avg_participants', 'market_stability']:
-        #         features[key] = 0.0
-
 
         if supplier_profile:
             # Кластери постачальника

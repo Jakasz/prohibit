@@ -21,8 +21,7 @@ if db_size < 1000:
 
 # 3. ОПЦІОНАЛЬНО: Завантаження профілів постачальників (покращує якість)
 profiles_files = [
-    "supplier_profiles_with_clusters.json",
-    "supplier_profiles_COMPLETE.json"
+    "supplier_profiles_with_clusters.json"
 ]
 profiles_loaded = False
 
@@ -33,19 +32,19 @@ for profiles_file in profiles_files:
         profiles_loaded = True
         break
 
-if not profiles_loaded:
-    print("⚠️ Профілі не знайдено. Створюємо нові...")
+# if not profiles_loaded:
+#     print("⚠️ Профілі не знайдено. Створюємо нові...")
     
-    # Імпортуємо та запускаємо створення
-    from update_with_clusters import ProfileBuilderWithClusters
+#     # Імпортуємо та запускаємо створення
+#     from update_with_clusters import ProfileBuilderWithClusters
     
-    builder = ProfileBuilderWithClusters(system.vector_db)
-    profiles = builder.build_profiles_from_vector_db()
-    builder.save_profiles()
+#     builder = ProfileBuilderWithClusters(system.vector_db)
+#     profiles = builder.build_profiles_from_vector_db()
+#     builder.save_profiles()
     
-    # Завантажуємо створені профілі
-    system.supplier_profiler.load_profiles("supplier_profiles_with_clusters.json")
-    print(f"✅ Створено та завантажено {len(system.supplier_profiler.profiles)} профілів")
+#     # Завантажуємо створені профілі
+#     system.supplier_profiler.load_profiles("supplier_profiles_with_clusters.json")
+#     print(f"✅ Створено та завантажено {len(system.supplier_profiler.profiles)} профілів")
 
 
 # 4. Навчання моделі НА ДАНИХ З ВЕКТОРНОЇ БАЗИ

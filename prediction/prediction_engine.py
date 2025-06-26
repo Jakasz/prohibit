@@ -35,11 +35,10 @@ from AI.model_monitor import ModelMonitor
 class PredictionEngine:
     """Основний двигун прогнозування тендерів"""
 
-    def __init__(self, supplier_profiler, competition_analyzer, categories_manager):
-        self.supplier_profiler = supplier_profiler
-        self.competition_analyzer = competition_analyzer
+    def __init__(self, supplier_profiler, categories_manager):
+        self.supplier_profiler = supplier_profiler        
         self.categories_manager = categories_manager
-        self.feature_extractor = FeatureExtractor(categories_manager, competition_analyzer)
+        self.feature_extractor = FeatureExtractor(categories_manager)
         self.models = {}
         self.scalers = {}
         self.feature_importance = {}
@@ -321,8 +320,8 @@ class PredictionEngine:
         
         # ===== [3] Масштабування (ВИКОРИСТОВУЄМО ОБРОБЛЕНІ ДАНІ) =====
         scaler = StandardScaler()
-        X_train_scaled = scaler.fit_transform(X_train_processed)  # <- змінено
-        X_test_scaled = scaler.transform(X_test_processed)        # <- змінено
+        X_train_scaled = scaler.fit_transform(X_train_processed)  
+        X_test_scaled = scaler.transform(X_test_processed)        
         self.scalers['main'] = scaler
 
         # ===== [4] Цикл тренування моделей =====

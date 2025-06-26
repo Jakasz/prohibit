@@ -59,11 +59,6 @@ class MarketStatistics:
                             'F_ITEMNAME': position.get('item_name', ''),
                             'WON': position.get('won', False),
                             'DATEEND': position.get('date_end', ''),
-                            # Додаткові поля які можуть знадобитися
-                            'supplier_name': position.get('supplier_name', ''),
-                            'budget': position.get('budget', 0),
-                            'quantity': position.get('quantity', 0),
-                            'price': position.get('price', 0)
                         }
                         historical_data.append(normalized)
                 
@@ -98,15 +93,8 @@ class MarketStatistics:
         
         # Збір даних
         for item in historical_data:
-            # ВАЖЛИВО: Використовуємо правильне поле для категорії
-            # Пріоритет: primary_category -> category -> unknown
-            category = item.get('primary_category')
-            if not category or category == 'unknown':
-                category = item.get('category')
-            if not category or category == 'unknown':
-                category = item.get('F_INDUSTRYNAME', item.get('category', 'unknown'))
-            if not category:
-                category = 'unknown'
+            #Використовуємо правильне поле для категорії
+            category = item.get('F_INDUSTRYNAME', item.get('category', 'unknown'))
             
             tender_id = item.get('F_TENDERNUMBER', item.get('tender_number', ''))
             edrpou = item.get('EDRPOU', item.get('edrpou', ''))
@@ -138,7 +126,7 @@ class MarketStatistics:
                         date = datetime.strptime(date_str, "%Y-%m-%d")
                     else:
                         date = None
-                        
+            
                     if date:
                         if not supplier_data['first_seen'] or date < supplier_data['first_seen']:
                             supplier_data['first_seen'] = date
@@ -209,13 +197,12 @@ class MarketStatistics:
         sorted_suppliers = sorted(suppliers.items(), 
                                 key=lambda x: x[1]['won'], 
                                 reverse=True)[:10]
-        
-        top3_wins = sum(s[1]['won'] for s in sorted_suppliers[:3])
+                
         top3_participations = sum(s[1]['participated'] for s in sorted_suppliers[:3])
         top3_market_share = top3_participations / total_positions if total_positions > 0 else 0
         
         # 5. Статистика для новачків (перші 6 місяців)
-        new_suppliers_data = self._analyze_new_suppliers(suppliers, data['tender_dates'])
+        new_suppliers_data = self._analyze_new_suppliers(suppliers)
         
         # 6. Win rate розподіл
         win_rate_distribution = self._calculate_win_rate_distribution(suppliers)
@@ -240,10 +227,10 @@ class MarketStatistics:
             'unique_winners_ratio': round(unique_winners_ratio, 3),
             'top3_market_share': round(top3_market_share, 3),
             
-            # Новачки
-            'new_supplier_win_rate': new_suppliers_data['avg_win_rate'],
-            'new_supplier_success_rate': new_suppliers_data['success_rate'],
-            'new_suppliers_share': new_suppliers_data['market_share'],
+            # # Новачки
+            # 'new_supplier_win_rate': new_suppliers_data['avg_win_rate'],
+            # 'new_supplier_success_rate': new_suppliers_data['success_rate'],
+            # 'new_suppliers_share': new_suppliers_data['market_share'],
             
             # Ймовірності
             'empirical_win_probability': round(empirical_win_probability, 3),
@@ -259,7 +246,7 @@ class MarketStatistics:
             )
         }
     
-    def _analyze_new_suppliers(self, suppliers: Dict, tender_dates: Dict) -> Dict:
+    def _analyze_new_suppliers(self, suppliers: Dict) -> Dict:
         """Аналіз результатів нових постачальників"""
         
         new_suppliers = {}
@@ -274,7 +261,7 @@ class MarketStatistics:
                 'count': 0,
                 'avg_win_rate': 0.2,  # Дефолтне значення
                 'success_rate': 0.15,
-                'market_share': 0.0
+                'market_share': 0.1
             }
         
         # Розрахунки
