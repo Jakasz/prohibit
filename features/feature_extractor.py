@@ -12,7 +12,7 @@ class FeatureExtractor:
     """Клас для вилучення ознак з даних тендерів"""
     
     def __init__(self, categories_manager,  brands_file='data/brands.json'):
-        self.category_manager = categories_manager        
+        self.categories_manager = categories_manager        
         self.logger = logging.getLogger(__name__)
         self.feature_names = []
         self.market_stats = None  # Буде ініціалізовано пізніше
@@ -35,172 +35,182 @@ class FeatureExtractor:
         features = {}
         tender_category = item.get('F_INDUSTRYNAME', 'unknown')
 
-        # 1. Категоріальні ознаки
-        categories = None
+        # 1. Визначаємо чи є досвід в категорії
+        has_category_experience = False
+        category_experience_data = None
+        
         if supplier_profile:
+            categories = None
             if hasattr(supplier_profile, 'categories'):
-                categories = getattr(supplier_profile, 'categories', None)
+                categories = supplier_profile.categories
             elif isinstance(supplier_profile, dict):
-                categories = supplier_profile.get('categories', None)
-        if categories:
-            primary_category = max(
-                categories.items(),
-                key=lambda x: x[1].get('won', 0)
-            )[0]
-            features['primary_category'] = hash(primary_category) % 10000  # або просто 0, якщо не хочете використовувати цю ознаку
-        else:
-            features['primary_category'] = 'unknown'
+                categories = supplier_profile.get('categories', {})
+            
+            if categories and tender_category in categories:
+                category_experience_data = categories[tender_category]
+                if category_experience_data.get('total', 0) >= 5:  # Мінімум 5 тендерів для "досвіду"
+                    has_category_experience = True
+        
+        features['has_category_experience'] = 1 if has_category_experience else 0
+        
+        # 2. Кластерна логіка
+        cluster_name = None
+        if self.market_stats and hasattr(self.market_stats, 'get_category_cluster'):
+            cluster_name = self.market_stats.get_category_cluster(tender_category)
 
-        # 2. Ринкова статистика для категорії
+        # 3. Визначаємо тип досвіду та заповнюємо метрики
+        if has_category_experience:
+            # Прямий досвід в категорії
+            features['experience_type'] = 1  # category
+            features['supplier_category_experience'] = category_experience_data.get('total', 0)
+            features['supplier_category_win_rate'] = category_experience_data.get('win_rate', 0)
+            features['supplier_category_wins'] = category_experience_data.get('won', 0)
+            
+        elif cluster_name and supplier_profile and categories:
+            # Досвід в кластері
+            features['experience_type'] = 2  # cluster
+            
+            # Збираємо статистику по всіх категоріях кластера
+            cluster_total = 0
+            cluster_won = 0
+            cluster_categories_count = 0
+
+            cluster_categories = self.categories_manager.categories_map.get(cluster_name, [])
+
+            for cat in cluster_categories:
+                if cat in categories and cat != tender_category:
+                    cat_data = categories[cat]
+                    cluster_total += cat_data.get('total', 0)
+                    cluster_won += cat_data.get('won', 0)
+                    if cat_data.get('total', 0) > 0:
+                        cluster_categories_count += 1
+            
+            # Кластерні метрики
+            cluster_win_rate = cluster_won / cluster_total if cluster_total > 0 else 0
+            
+            # Використовуємо кластерні дані з понижуючим коефіцієнтом
+            features['supplier_category_experience'] = cluster_total * 0.7
+            features['supplier_category_win_rate'] = cluster_win_rate * 0.8
+            features['supplier_category_wins'] = cluster_won * 0.7
+            
+        else:
+            # Немає релевантного досвіду
+            features['experience_type'] = 3  # general
+            features['supplier_category_experience'] = 0
+            if isinstance(supplier_profile, dict):
+                features['supplier_category_win_rate'] = supplier_profile.get('metrics', {}).get('win_rate', 0) * 0.5
+            elif supplier_profile:
+                metrics = getattr(supplier_profile, 'metrics', {})
+                features['supplier_category_win_rate'] = getattr(metrics, 'win_rate', 0) * 0.5
+            else:
+                features['supplier_category_win_rate'] = 0
+                features['supplier_category_wins'] = 0
+        
+        # 4. Основні метрики постачальника
+        if supplier_profile:
+            if isinstance(supplier_profile, dict):
+                metrics = supplier_profile.get('metrics', {})
+                features['supplier_win_rate'] = metrics.get('win_rate', 0.0)
+                features['supplier_position_win_rate'] = metrics.get('position_win_rate', 0.0)
+                features['supplier_experience'] = metrics.get('total_positions', 0)
+                features['supplier_stability'] = metrics.get('stability_score', 0.0)
+                features['supplier_specialization'] = metrics.get('specialization_score', 0.0)
+                features['supplier_recent_win_rate'] = metrics.get('recent_win_rate', 0.0)
+                features['supplier_growth_rate'] = metrics.get('growth_rate', 0.0)
+                features['supplier_reliability'] = supplier_profile.get('reliability_score', 0.0)
+            else:
+                metrics = getattr(supplier_profile, 'metrics', {})
+                features['supplier_win_rate'] = getattr(metrics, 'win_rate', 0.0)
+                features['supplier_position_win_rate'] = getattr(metrics, 'position_win_rate', 0.0)
+                features['supplier_experience'] = getattr(metrics, 'total_positions', 0)
+                features['supplier_stability'] = getattr(metrics, 'stability_score', 0.0)
+                features['supplier_specialization'] = getattr(metrics, 'specialization_score', 0.0)
+                features['supplier_recent_win_rate'] = getattr(metrics, 'recent_win_rate', 0.0)
+                features['supplier_growth_rate'] = getattr(metrics, 'growth_rate', 0.0)
+                features['supplier_reliability'] = getattr(supplier_profile, 'reliability_score', 0.0)
+
+            # # Кластерні ознаки
+            # if hasattr(supplier_profile, 'clusters'):
+            #     supplier_clusters = supplier_profile.clusters
+            #     features['supplier_cluster_count'] = len(supplier_clusters)
+            #     features['works_in_current_cluster'] = 1 if cluster_name and cluster_name in supplier_clusters else 0
+            # else:
+            #     features['supplier_cluster_count'] = 0
+            #     features['works_in_current_cluster'] = 0
+                
+            # Конкурентні ознаки
+            if hasattr(supplier_profile, 'top_competitors'):
+                top_competitors = supplier_profile.top_competitors
+                if top_competitors:
+                    avg_top_win_rate = sum(c.get('year_win_rate', 0) for c in top_competitors) / len(top_competitors)
+                    features['competitor_top_avg_win_rate'] = avg_top_win_rate
+                    features['supplier_vs_top_competitors'] = metrics.win_rate - avg_top_win_rate
+                else:
+                    features['competitor_top_avg_win_rate'] = 0
+                    features['supplier_vs_top_competitors'] = 0
+            else:
+                features['competitor_top_avg_win_rate'] = 0
+                features['supplier_vs_top_competitors'] = 0
+                
+        else:
+            # Дефолтні значення для нового постачальника
+            for key in ['supplier_win_rate', 'supplier_position_win_rate', 'supplier_experience',
+                    'supplier_stability', 'supplier_specialization', 'supplier_recent_win_rate',
+                    'supplier_growth_rate', 'supplier_reliability']:
+                features[key] = 0.0
+            # features['supplier_cluster_count'] = 0
+            # features['works_in_current_cluster'] = 0
+            features['competitor_top_avg_win_rate'] = 0
+            features['supplier_vs_top_competitors'] = 0
+        
+        # 5. Ринкова статистика для категорії
         if self.market_stats:
             category_context = self.market_stats.get_category_context(tender_category)
             features['category_avg_suppliers'] = category_context['avg_suppliers_per_tender']
             features['category_win_probability'] = category_context['empirical_win_probability']
             features['category_market_openness'] = category_context['market_openness']
             features['category_entry_barrier'] = category_context['entry_barrier_score']
-            if not supplier_profile or supplier_profile.metrics.total_tenders < 5:
+            
+            # Визначаємо чи новий постачальник
+            if not supplier_profile:
                 features['is_new_supplier'] = 1
-                features['category_new_supplier_win_rate'] = category_context['new_supplier_win_rate']
+            elif isinstance(supplier_profile, dict):
+                features['is_new_supplier'] = 1 if supplier_profile.get('metrics', {}).get('total_tenders', 0) < 5 else 0
             else:
-                features['is_new_supplier'] = 0
-                features['category_new_supplier_win_rate'] = 0
-            features['is_high_competition'] = 1 if category_context['avg_suppliers_per_tender'] > 5 else 0
-            features['is_concentrated_market'] = 1 if category_context.get('market_concentration', 0) > 0.3 else 0
-            features['is_open_market'] = 1 if category_context['market_openness'] > 0.7 else 0
-            cluster_name = self.market_stats.get_category_cluster(tender_category)
-            if cluster_name:
-                cluster_context = self.market_stats.get_cluster_context(cluster_name)
-                features['cluster_avg_competition'] = cluster_context['avg_suppliers_per_tender']
-                features['cluster_complexity'] = cluster_context['cluster_complexity']
-                features['cluster_new_supplier_win_rate'] = cluster_context['avg_new_supplier_win_rate']
-                features['in_cluster'] = 1
-                features[f'in_cluster_{cluster_name}'] = 1
+                metrics = getattr(supplier_profile, 'metrics', {})
+                features['is_new_supplier'] = 1 if getattr(metrics, 'total_tenders', 0) < 5 else 0
+
+            # Відносна сила постачальника
+            if supplier_profile and features['supplier_win_rate'] > 0:
+                features['supplier_vs_market_avg'] = features['supplier_win_rate'] - features['category_win_probability']
             else:
-                features['cluster_avg_competition'] = 3.0
-                features['cluster_complexity'] = 0.5
-                features['cluster_new_supplier_win_rate'] = 0.2
-                features['in_cluster'] = 0
+                features['supplier_vs_market_avg'] = 0
         else:
+            # Дефолтні значення
             features['category_avg_suppliers'] = 3.0
             features['category_win_probability'] = 0.33
             features['category_market_openness'] = 0.7
             features['category_entry_barrier'] = 0.5
-            features['is_new_supplier'] = 0
-            features['category_new_supplier_win_rate'] = 0.2
-            features['is_high_competition'] = 0
-            features['is_concentrated_market'] = 0
-            features['is_open_market'] = 1
-            features['cluster_avg_competition'] = 3.0
-            features['cluster_complexity'] = 0.5
-            features['cluster_new_supplier_win_rate'] = 0.2
-            features['in_cluster'] = 0
-
-
-        # 3. Ознаки постачальника
-        if supplier_profile:
-            metrics = supplier_profile.metrics
-            features['supplier_win_rate'] = metrics.win_rate
-            features['supplier_position_win_rate'] = metrics.position_win_rate
-            features['supplier_experience'] = metrics.total_tenders
-            features['supplier_stability'] = metrics.stability_score
-            features['supplier_specialization'] = metrics.specialization_score
-            features['supplier_recent_win_rate'] = metrics.recent_win_rate
-            features['supplier_growth_rate'] = metrics.growth_rate
-            features['supplier_reliability'] = supplier_profile.reliability_score
-            cat_data = supplier_profile.categories.get(tender_category, {})
-            features['supplier_category_experience'] = cat_data.get('total', 0)
-            features['supplier_category_win_rate'] = cat_data.get('win_rate', 0)
-            if self.market_stats and features['supplier_win_rate'] > 0:
-                features['supplier_vs_market_avg'] = features['supplier_win_rate'] - features['category_win_probability']
-                features['supplier_percentile'] = self.market_stats.calculate_supplier_percentile(
-                    supplier_profile, tender_category
-                )
-            else:
-                features['supplier_vs_market_avg'] = 0
-                features['supplier_percentile'] = 0.5
-            # Кластерні ознаки
-            supplier_clusters = supplier_profile.clusters
-            features['supplier_cluster_count'] = len(supplier_clusters)
-            # Конкурентні ознаки
-            top_competitors = supplier_profile.top_competitors
-            if top_competitors:
-                avg_top_win_rate = sum(c.get('year_win_rate', 0) for c in top_competitors) / len(top_competitors)
-                features['competitor_top_avg_win_rate'] = avg_top_win_rate
-                supplier_win_rate = metrics.win_rate
-                features['supplier_vs_top_competitors'] = supplier_win_rate - avg_top_win_rate
-                features['strong_competitors_count'] = len([c for c in top_competitors if c.get('year_win_rate', 0) > 0.5])
-            else:
-                features['competitor_top_avg_win_rate'] = 0
-                features['supplier_vs_top_competitors'] = 0
-                features['strong_competitors_count'] = 0
-            # Чи є лідером в своїх кластерах
-            total_wins = metrics.won_positions
-            features['is_cluster_leader'] = 1 if total_wins > 500 else 0
-        else:
-            # Дефолтні значення для нового постачальника
-            if self.market_stats:
-                context = self.market_stats.get_category_context(tender_category)
-                features['supplier_win_rate'] = context['new_supplier_win_rate']
-                features['supplier_position_win_rate'] = context['new_supplier_win_rate']
-                features['supplier_experience'] = 0
-                features['supplier_stability'] = 0.3
-                features['supplier_specialization'] = 0.5
-                features['supplier_recent_win_rate'] = context['new_supplier_win_rate']
-                features['supplier_growth_rate'] = 0.0
-                features['supplier_reliability'] = 0.3
-                features['supplier_category_experience'] = 0
-                features['supplier_category_win_rate'] = context['new_supplier_win_rate']
-                features['supplier_vs_market_avg'] = 0
-                features['supplier_percentile'] = 0.25
-            else:
-                for key in ['supplier_win_rate', 'supplier_position_win_rate', 'supplier_experience',
-                           'supplier_stability', 'supplier_specialization', 'supplier_recent_win_rate',
-                           'supplier_growth_rate', 'supplier_reliability', 'supplier_category_experience',
-                           'supplier_category_win_rate', 'supplier_vs_market_avg', 'supplier_percentile']:
-                    features[key] = 0.0
-            features['supplier_cluster_count'] = 0
-            features['competitor_top_avg_win_rate'] = 0
-            features['supplier_vs_top_competitors'] = 0
-            features['strong_competitors_count'] = 0
-            features['is_cluster_leader'] = 0
-
-        # 4. Текстові ознаки з назви позиції
+            features['is_new_supplier'] = 1 if not supplier_profile else 0
+            features['supplier_vs_market_avg'] = 0
+        
+        # 6. Текстові ознаки (тільки базові)
         item_name = item.get('F_ITEMNAME', '')
-        features['item_name_length'] = len(item_name)
-        features['item_name_words'] = len(item_name.split())
+        # features['item_name_length'] = len(item_name)
+        # features['item_name_words'] = len(item_name.split())
+        
+        # Наявність брендів
         item_upper = item_name.upper()
         features['has_brand'] = int(any(brand in item_upper for brand in self.brand_patterns))
-        features['brand_count'] = sum(1 for brand in self.brand_patterns if brand in item_upper)
-
-        # 5. CPV ознаки
-        cpv = item.get('CPV', 0)
-        if cpv:
-            cpv_str = str(cpv)
-            features['cpv_division'] = int(cpv_str[:2]) if len(cpv_str) >= 2 else 0
-            features['cpv_group'] = int(cpv_str[:3]) if len(cpv_str) >= 3 else 0
-            features['cpv_class'] = int(cpv_str[:4]) if len(cpv_str) >= 4 else 0
-        else:
-            features['cpv_division'] = 0
-            features['cpv_group'] = 0
-            features['cpv_class'] = 0
-
-        # 6. Складені ознаки
+        
+        # 7. Складені ознаки
         features['supplier_category_fit'] = features['supplier_category_win_rate'] * features['supplier_specialization']
         features['competitive_strength'] = features['supplier_win_rate'] * features['supplier_stability']
-        features['market_position_score'] = features['supplier_experience'] * features['supplier_win_rate'] / 100
-        if self.market_stats:
-            features['relative_category_strength'] = (
-                features['supplier_category_win_rate'] /
-                (features['category_win_probability'] + 0.01)
-            )
-            features['competition_readiness'] = (
-                features['supplier_experience'] *
-                (1 - features['category_entry_barrier']) *
-                features['supplier_stability']
-            ) / 100
-
+        
+        # Зберігаємо список ознак
         if not self.feature_names:
             self.feature_names = list(features.keys())
+        
         return features
     
     def create_interaction_features(self, df: pd.DataFrame) -> pd.DataFrame:

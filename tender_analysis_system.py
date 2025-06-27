@@ -237,15 +237,210 @@ class TenderAnalysisSystem:
         self.logger.info(f"✅ Статистика оновлена для категорій")
         
         return results
+    
+    
+    def _process_historical_data_to_features(self, historical_data: List[Dict]) -> Tuple[pd.DataFrame, pd.Series]:
+        """
+        Обробка історичних даних у фічі та таргети
+        
+        Args:
+            historical_data: Список словників з даними тендерів
+        
+        Returns:
+            Tuple[pd.DataFrame, pd.Series]: X (фічі) та y (таргети)
+        """
+        # Перетворюємо в DataFrame для зручності
+        df = pd.DataFrame(historical_data)
+        
+        # Діагностика даних
+        self.logger.info(f"\n📊 Діагностика даних:")
+        self.logger.info(f"   • Всього записів: {len(df):,}")
+        self.logger.info(f"   • Колонки: {list(df.columns)}")
+        
+        # Перевірка наявності основних полів
+        required_fields = ['EDRPOU', 'F_ITEMNAME', 'WON']
+        missing_fields = [field for field in required_fields if field not in df.columns]
+        
+        if missing_fields:
+            self.logger.warning(f"⚠️ Відсутні обов'язкові поля: {missing_fields}")
+            # Спробуємо знайти альтернативні назви
+            field_mapping = {
+                'EDRPOU': ['edrpou', 'supplier_id'],
+                'F_ITEMNAME': ['item_name', 'itemname'],
+                'WON': ['won', 'is_winner']
+            }
+            
+            for missing_field in missing_fields:
+                alternatives = field_mapping.get(missing_field, [])
+                found_alternative = None
+                
+                for alt in alternatives:
+                    if alt in df.columns:
+                        found_alternative = alt
+                        break
+                
+                if found_alternative:
+                    df[missing_field] = df[found_alternative]
+                    self.logger.info(f"   ✅ Замінено {missing_field} -> {found_alternative}")
+                else:
+                    self.logger.error(f"   ❌ Не знайдено альтернативи для {missing_field}")
+        
+        # Очищення даних
+        initial_count = len(df)
+        
+        # Видаляємо записи без основних полів
+        df = df.dropna(subset=['EDRPOU', 'F_ITEMNAME'])
+        
+        # Видаляємо дублікати
+        df = df.drop_duplicates()
+        
+        cleaned_count = len(df)
+        self.logger.info(f"   • Після очищення: {cleaned_count:,} записів (видалено {initial_count - cleaned_count:,})")
+        
+        # Витягування ознак для кожного запису
+        self.logger.info("🔧 Витягування ознак...")
+        
+        features_list = []
+        targets = []
+        
+        # Використовуємо tqdm для прогресу
+        from tqdm import tqdm
+        
+        for idx, row in tqdm(df.iterrows(), total=len(df), desc="Обробка записів"):
+            # Конвертуємо рядок DataFrame назад у словник
+            item = row.to_dict()
+            
+            # Витягуємо ЄДРПОУ для пошуку профілю
+            edrpou = item.get('EDRPOU', '')
+            
+            # Отримуємо профіль постачальника (якщо є)
+            supplier_profile = None
+            if edrpou and hasattr(self.supplier_profiler, 'profiles'):
+                supplier_profile = self.supplier_profiler.profiles.get(edrpou)
+                if supplier_profile and hasattr(supplier_profile, 'to_dict'):
+                    supplier_profile = supplier_profile.to_dict()
+            
+            # Витягуємо всі ознаки
+            try:
+                features = self.feature_extractor.extract_features(item, supplier_profile)
+                features_list.append(features)
+                
+                # Цільова змінна - чи виграв постачальник
+                targets.append(int(item.get('WON', False)))
+                
+            except Exception as e:
+                self.logger.debug(f"Помилка обробки запису {idx}: {e}")
+                continue
+        
+        # Створюємо фінальні структури даних
+        X = pd.DataFrame(features_list)
+        y = pd.Series(targets)
+        
+        # Заповнення пропусків
+        X = X.fillna(0)
+        
+        # Діагностика результатів
+        self.logger.info(f"\n📊 Результати витягування ознак:")
+        self.logger.info(f"   • Всього зразків: {len(X):,}")
+        self.logger.info(f"   • Кількість ознак: {len(X.columns)}")
+        self.logger.info(f"   • Розподіл класів:")
+        self.logger.info(f"     - WON=0 (програли): {(y == 0).sum():,} ({(y == 0).sum() / len(y) * 100:.1f}%)")
+        self.logger.info(f"     - WON=1 (виграли): {(y == 1).sum():,} ({(y == 1).sum() / len(y) * 100:.1f}%)")
+        
+        # Перевірка балансу класів
+        if (y == 1).sum() < len(y) * 0.05:
+            self.logger.warning("⚠️ Дуже мало позитивних прикладів (<5%). Модель може погано навчатися!")
+        
+        # Додаткова діагностика ознак
+        self.logger.info(f"\n🔍 Топ-10 ознак:")
+        feature_importance_preview = []
+        for col in X.columns[:10]:
+            non_zero_count = (X[col] != 0).sum()
+            feature_importance_preview.append(f"   • {col}: {non_zero_count:,} не-нульових значень")
+        
+        for line in feature_importance_preview:
+            self.logger.info(line)
+        
+        return X, y
 
 
 
     
-    def prepare_training_data_from_vector_db(self) -> Tuple[pd.DataFrame, pd.Series]:
-        """Підготовка навчальних даних з векторної бази"""
-        self.logger.info("📥 Завантаження даних з векторної бази для навчання...")
+    def prepare_training_data_from_vector_db(self, use_cache: bool = True) -> Tuple[pd.DataFrame, pd.Series]:
+        """
+        Підготовка навчальних даних з векторної бази або кешу
         
-        # 1. Отримуємо ВСІ записи з векторної бази
+        Args:
+            use_cache: Якщо True, спочатку спробує завантажити з files/all_data_cache.pkl
+        """
+        cache_file = "files/all_data_cache.pkl"
+        
+        # Спробуємо завантажити з кешу якщо він існує
+        if use_cache and Path(cache_file).exists():
+            self.logger.info(f"📂 Завантаження даних з кешу {cache_file}...")
+            
+            try:
+                import pickle
+                
+                with open(cache_file, 'rb') as f:
+                    cached_data = pickle.load(f)
+                
+                # Перевірка структури кешу та конвертація
+                historical_data = []
+                
+                if isinstance(cached_data, dict):
+                    # Структура з prf.py: {edrpou: [positions]}
+                    self.logger.info(f"✅ Завантажено дані для {len(cached_data)} постачальників з кешу")
+                    
+                    # Перетворюємо в плоский список позицій
+                    for edrpou, positions in cached_data.items():
+                        for position in positions:
+                            # Нормалізуємо структуру для обробки
+                            normalized = {
+                                'EDRPOU': position.get('edrpou', edrpou),
+                                'F_TENDERNUMBER': position.get('tender_number', ''),
+                                'F_INDUSTRYNAME': position.get('industry', ''),
+                                'F_ITEMNAME': position.get('item_name', ''),
+                                'F_TENDERNAME': position.get('tender_name', ''),
+                                'F_DETAILNAME': position.get('detail_name', ''),
+                                'OWNER_NAME': position.get('owner_name', ''),
+                                'supp_name': position.get('supplier_name', ''),
+                                'CPV': position.get('cpv', 0),
+                                'ITEM_BUDGET': position.get('budget', 0),
+                                'F_qty': position.get('quantity', 0),
+                                'F_price': position.get('price', 0),
+                                'F_TENDERCURRENCY': position.get('currency', 'UAH'),
+                                'F_TENDERCURRENCYRATE': position.get('currency_rate', 1.0),
+                                'WON': position.get('won', False),
+                                'DATEEND': position.get('date_end', ''),
+                                'EXTRACTION_DATE': position.get('extraction_date', ''),
+                                'ID': position.get('original_id', '')
+                            }
+                            historical_data.append(normalized)
+                    
+                    self.logger.info(f"✅ Перетворено в {len(historical_data):,} записів з кешу")
+                    
+                elif isinstance(cached_data, list):
+                    # Вже готовий список записів
+                    historical_data = cached_data
+                    self.logger.info(f"✅ Завантажено {len(historical_data):,} записів з кешу")
+                    
+                else:
+                    self.logger.warning("⚠️ Невідомий формат кешу, переходимо до векторної бази")
+                    historical_data = None
+                
+                # Якщо дані з кешу успішно завантажені, використовуємо їх
+                if historical_data:
+                    return self._process_historical_data_to_features(historical_data)
+                    
+            except Exception as e:
+                self.logger.error(f"❌ Помилка завантаження кешу: {e}")
+                self.logger.info("📊 Переходимо до завантаження з векторної бази...")
+        
+        # Якщо кеш недоступний або використання кешу вимкнено - завантажуємо з векторної бази
+        self.logger.info("📊 Завантаження даних з векторної бази...")
+        
+        # Збираємо дані по постачальниках
         all_records = []
         offset = None
         batch_size = 30000
@@ -280,51 +475,8 @@ class TenderAnalysisSystem:
         
         self.logger.info(f"✅ Завантажено {len(all_records):,} записів з векторної бази")
         
-        # 2. Перетворюємо в DataFrame для зручності
-        df = pd.DataFrame(all_records)
-        
-        # 3. Витягуємо ознаки для кожного запису
-        features_list = []
-        targets = []
-        
-        for idx, row in df.iterrows():
-            # Конвертуємо рядок DataFrame назад у словник
-            item = row.to_dict()
-            
-            # Витягуємо ЄДРПОУ для пошуку профілю
-            edrpou = item.get('edrpou', '')
-            
-            # Отримуємо профіль постачальника (якщо є)
-            supplier_profile = None
-            if edrpou and hasattr(self.supplier_profiler, 'profiles'):
-                supplier_profile = self.supplier_profiler.profiles.get(edrpou)
-                if supplier_profile:
-                    supplier_profile = supplier_profile.to_dict()
-            
-            # Витягуємо всі ознаки
-            features = self.feature_extractor.extract_features(item, supplier_profile)
-            features_list.append(features)
-            
-            # Цільова змінна - чи виграв постачальник
-            targets.append(int(item.get('won', False)))
-        
-        # 4. Створюємо фінальні структури даних
-        X = pd.DataFrame(features_list)
-        y = pd.Series(targets)
-        
-        # 5. Діагностика даних
-        self.logger.info(f"\n📊 Статистика навчальних даних:")
-        self.logger.info(f"   • Всього зразків: {len(X):,}")
-        self.logger.info(f"   • Кількість ознак: {len(X.columns)}")
-        self.logger.info(f"   • Розподіл класів:")
-        self.logger.info(f"     - WON=0 (програли): {(y == 0).sum():,} ({(y == 0).sum() / len(y) * 100:.1f}%)")
-        self.logger.info(f"     - WON=1 (виграли): {(y == 1).sum():,} ({(y == 1).sum() / len(y) * 100:.1f}%)")
-        
-        # Перевірка балансу класів
-        if (y == 1).sum() < len(y) * 0.05:
-            self.logger.warning("⚠️ Дуже мало позитивних прикладів (<5%). Модель може погано навчатися!")
-        
-        return X, y
+        return self._process_historical_data_to_features(all_records)
+
 
 
    

@@ -1,3 +1,4 @@
+import json
 import numpy as np
 import pandas as pd
 import logging
@@ -11,6 +12,7 @@ from typing import Dict, List, Tuple, Optional, Any
 import pickle
 import joblib
 from datetime import datetime
+import matplotlib.pyplot as plt
 
 from profiles.supplier_profiler import SupplierProfile
 
@@ -53,45 +55,455 @@ class PredictionEngine:
                 'params': {
                     'n_estimators': 200,
                     'max_depth': 15,
-                    'min_samples_split': 10,
-                    'min_samples_leaf': 5,
+                    'min_samples_split': 20,
+                    'min_samples_leaf': 15,
                     'max_features': 'sqrt',
                     'n_jobs': -1,
-                    'random_state': 42,
-                    'class_weight': 'balanced'
+                    'random_state': 42
                 }
             },
             'gradient_boosting': {
                 'class': GradientBoostingClassifier,
                 'params': {
-                    'n_estimators': 100,
-                    'learning_rate': 0.1,
+                    'n_estimators': 250,
+                    'learning_rate': 0.05,
                     'max_depth': 5,
-                    'subsample': 0.8,
+                    'subsample': 0.7,
                     'random_state': 42
                 }
             }
-            # XGBoost можна додати за потреби
         }
         if XGBOOST_AVAILABLE:
             self.model_configs['xgboost'] = {
                 'class': XGBClassifier,
                 'params': {
-                    'n_estimators': 150,
-                    'max_depth': 6,
-                    'learning_rate': 0.1,
-                    'subsample': 0.8,
+                    'n_estimators': 300,
+                    'max_depth': 8,
+                    'learning_rate': 0.05,
+                    'subsample': 0.7,
                     'colsample_bytree': 0.8,
+                    'min_child_weight': 10,
+                    'gamma': 0.1,
                     'random_state': 42,
                     'n_jobs': -1,
-                    'use_label_encoder': False,
-                    'eval_metric': 'logloss'
+                    'eval_metric': 'logloss',
+                    'tree_method': 'hist'
                 }
             }
 
 
         self.ensemble_weights = {}
         self.calibrated_models = {}
+
+    def analyze_with_shap(self, X_sample=None, sample_size=1000, save_plots=True):
+        """
+        Повний SHAP аналіз моделі
+        
+        Args:
+            X_sample: дані для аналізу (якщо None - візьме з training_data)
+            sample_size: кількість прикладів для аналізу
+            save_plots: чи зберігати графіки
+        """
+        try:
+            import shap
+            
+            
+            self.logger.info("🔍 Початок SHAP аналізу...")
+            
+            # Підготовка даних
+            if X_sample is None:
+                if not hasattr(self, 'training_data') or self.training_data is None:
+                    raise ValueError("Немає даних для аналізу. Спочатку натренуйте модель.")
+                X, y = self.training_data
+                # Беремо випадкову вибірку
+                if len(X) > sample_size:
+                    indices = np.random.choice(len(X), sample_size, replace=False)
+                    X_sample = X.iloc[indices] if hasattr(X, 'iloc') else X[indices]
+                    y_sample = y.iloc[indices] if hasattr(y, 'iloc') else y[indices]
+                else:
+                    X_sample = X
+                    y_sample = y
+            
+            # Обробка даних через feature processor якщо є
+            if hasattr(self, 'feature_processor'):
+                X_sample_processed = self.feature_processor.transform(X_sample)
+                X_sample_processed = self.feature_extractor.create_interaction_features(X_sample_processed)
+            else:
+                X_sample_processed = X_sample
+            
+            # Масштабування
+            X_sample_scaled = self.scalers['main'].transform(X_sample_processed)
+            
+            # Аналіз для кожної моделі
+            shap_results = {}
+            
+            for model_name, model in self.models.items():
+                self.logger.info(f"\n📊 SHAP аналіз для {model_name}...")
+                
+                try:
+                    # Створення пояснювача
+                    if model_name == 'random_forest':
+                        explainer = shap.TreeExplainer(model)
+                    elif model_name == 'gradient_boosting':
+                        explainer = shap.TreeExplainer(model)
+                    elif model_name == 'xgboost' and hasattr(model, 'get_booster'):
+                        explainer = shap.TreeExplainer(model)
+                    else:
+                        # Для інших моделей використовуємо KernelExplainer
+                        explainer = shap.KernelExplainer(
+                            model.predict_proba, 
+                            shap.sample(X_sample_scaled, 100)
+                        )
+                    
+                    # Обчислення SHAP values
+                    shap_values = explainer.shap_values(X_sample_scaled)
+                    
+                    # Для бінарної класифікації беремо значення для класу 1
+                    if isinstance(shap_values, list) and len(shap_values) == 2:
+                        shap_values = shap_values[1]
+                    
+                    # Зберігаємо результати
+                    shap_results[model_name] = {
+                        'shap_values': shap_values,
+                        'explainer': explainer,
+                        'expected_value': explainer.expected_value[1] if isinstance(explainer.expected_value, np.ndarray) else explainer.expected_value
+                    }
+                    
+                    # Створення візуалізацій
+                    if save_plots:
+                        self._create_shap_plots(
+                            shap_values, 
+                            X_sample_processed, 
+                            model_name,
+                            explainer.expected_value[1] if isinstance(explainer.expected_value, np.ndarray) else explainer.expected_value
+                        )
+                    
+                    # Аналіз experience_type якщо є
+                    if 'experience_type' in self.feature_names:
+                        self._analyze_experience_type_shap(shap_values, X_sample_processed, model_name)
+                    
+                except Exception as e:
+                    self.logger.error(f"Помилка SHAP аналізу для {model_name}: {e}")
+                    continue
+            
+            # Зберігаємо SHAP результати
+            self.shap_results = shap_results
+            
+            # Створення загального звіту
+            self._create_shap_report(shap_results, X_sample_processed)
+            
+            self.logger.info("✅ SHAP аналіз завершено!")
+            
+            return shap_results
+            
+        except ImportError:
+            self.logger.error("❌ SHAP не встановлено. Виконайте: pip install shap")
+            raise
+
+    def _create_shap_plots(self, shap_values, X_sample, model_name, expected_value):
+        """Створення SHAP візуалізацій"""
+        import shap
+        from pathlib import Path
+        
+        # Створюємо директорію для графіків
+        plots_dir = Path("shap_plots")
+        plots_dir.mkdir(exist_ok=True)
+        
+        # 1. Summary plot - загальний огляд
+        plt.figure(figsize=(10, 8))
+        shap.summary_plot(
+            shap_values, 
+            X_sample, 
+            feature_names=self.feature_names,
+            show=False
+        )
+        plt.title(f'SHAP Summary Plot - {model_name}')
+        plt.tight_layout()
+        plt.savefig(plots_dir / f'shap_summary_{model_name}.png', dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        # 2. Feature importance bar plot
+        plt.figure(figsize=(10, 8))
+        shap.summary_plot(
+            shap_values, 
+            X_sample, 
+            feature_names=self.feature_names,
+            plot_type="bar",
+            show=False
+        )
+        plt.title(f'SHAP Feature Importance - {model_name}')
+        plt.tight_layout()
+        plt.savefig(plots_dir / f'shap_importance_{model_name}.png', dpi=300, bbox_inches='tight')
+        plt.close()
+        
+        # 3. Dependence plots для топ-5 ознак
+        feature_importance = np.abs(shap_values).mean(axis=0)
+        top_features_idx = np.argsort(feature_importance)[-5:][::-1]
+        
+        for idx in top_features_idx:
+            plt.figure(figsize=(8, 6))
+            shap.dependence_plot(
+                idx, 
+                shap_values, 
+                X_sample,
+                feature_names=self.feature_names,
+                show=False
+            )
+            feature_name = self.feature_names[idx]
+            plt.title(f'SHAP Dependence Plot - {feature_name} ({model_name})')
+            plt.tight_layout()
+            plt.savefig(plots_dir / f'shap_dependence_{model_name}_{feature_name}.png', dpi=300, bbox_inches='tight')
+            plt.close()
+        
+        self.logger.info(f"📈 Графіки збережено в {plots_dir}/")
+
+    def _analyze_experience_type_shap(self, shap_values, X_sample, model_name):
+        """Спеціальний аналіз для experience_type"""
+        if 'experience_type' not in self.feature_names:
+            return
+        
+        exp_type_idx = self.feature_names.index('experience_type')
+        
+        print(f"\n=== Аналіз experience_type для {model_name} ===")
+        
+        # Групуємо SHAP values по типах досвіду
+        X_df = pd.DataFrame(X_sample, columns=self.feature_names)
+        
+        for exp_type in [1, 2, 3]:
+            mask = X_df['experience_type'] == exp_type
+            if mask.any():
+                shap_mean = shap_values[mask, exp_type_idx].mean()
+                shap_std = shap_values[mask, exp_type_idx].std()
+                count = mask.sum()
+                
+                type_names = {1: "Прямий досвід", 2: "Кластерний досвід", 3: "Загальний"}
+                print(f"\n{type_names[exp_type]}:")
+                print(f"  Кількість: {count}")
+                print(f"  Середній SHAP: {shap_mean:+.4f}")
+                print(f"  Std SHAP: {shap_std:.4f}")
+                print(f"  Вплив: {'Позитивний' if shap_mean > 0 else 'Негативний'}")
+
+    def test_prediction_with_explanation(self, edrpou, item_name, category):
+        """Швидкий тест прогнозу з поясненням"""
+        
+        test_data = {
+            "EDRPOU": edrpou,
+            "F_ITEMNAME": item_name,
+            "F_TENDERNAME": f"Тестова закупівля {category}",
+            "F_INDUSTRYNAME": category
+        }
+        
+        print(f"\n🧪 ТЕСТ ПРОГНОЗУ")
+        print("="*60)
+        
+        try:
+            # Знаходимо профіль постачальника
+            supplier_profile = None
+            if hasattr(self, 'supplier_analyzer'):
+                supplier_profile = self.supplier_analyzer.get_supplier_profile(edrpou)
+                if supplier_profile:
+                    print(f"✅ Знайдено профіль постачальника:")
+                    print(f"   Загальний win rate: {supplier_profile.metrics.win_rate:.2%}")
+                    print(f"   Досвід: {supplier_profile.metrics.total_tenders} тендерів")
+                else:
+                    print(f"⚠️ Профіль постачальника не знайдено")
+            
+            # Робимо прогноз
+            result = self.explain_single_prediction(test_data, supplier_profile, show_plot=False)
+            
+            return result
+            
+        except Exception as e:
+            print(f"❌ Помилка: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
+
+
+
+
+
+    def _create_shap_report(self, shap_results, X_sample):
+        """Створення детального SHAP звіту"""
+        report = {
+            'timestamp': datetime.now().isoformat(),
+            'sample_size': len(X_sample),
+            'models_analyzed': list(shap_results.keys()),
+            'feature_analysis': {}
+        }
+        
+        # Аналіз по кожній ознаці
+        for feature_idx, feature_name in enumerate(self.feature_names):
+            feature_report = {}
+            
+            for model_name, results in shap_results.items():
+                shap_vals = results['shap_values'][:, feature_idx]
+                
+                feature_report[model_name] = {
+                    'mean_abs_shap': float(np.abs(shap_vals).mean()),
+                    'mean_shap': float(shap_vals.mean()),
+                    'std_shap': float(shap_vals.std()),
+                    'positive_impact_ratio': float((shap_vals > 0).mean()),
+                    'feature_importance_rank': None  # Заповнимо пізніше
+                }
+            
+            report['feature_analysis'][feature_name] = feature_report
+        
+        # Додаємо ранги важливості
+        for model_name in shap_results.keys():
+            # Сортуємо ознаки за важливістю
+            importance_list = [
+                (feat, data[model_name]['mean_abs_shap']) 
+                for feat, data in report['feature_analysis'].items()
+            ]
+            importance_list.sort(key=lambda x: x[1], reverse=True)
+            
+            # Присвоюємо ранги
+            for rank, (feat, _) in enumerate(importance_list, 1):
+                report['feature_analysis'][feat][model_name]['feature_importance_rank'] = rank
+        
+        # Зберігаємо звіт
+        with open('shap_analysis_report.json', 'w', encoding='utf-8') as f:
+            json.dump(report, f, indent=2, ensure_ascii=False)
+        
+        self.logger.info("📄 SHAP звіт збережено в shap_analysis_report.json")
+        
+        # Виводимо топ-10 важливих ознак
+        print("\n📊 ТОП-10 НАЙВАЖЛИВІШИХ ОЗНАК (за SHAP):")
+        print("="*70)
+        
+        for model_name in shap_results.keys():
+            print(f"\n{model_name}:")
+            top_features = sorted(
+                report['feature_analysis'].items(),
+                key=lambda x: x[1][model_name]['mean_abs_shap'],
+                reverse=True
+            )[:10]
+            
+            for feat_name, feat_data in top_features:
+                model_data = feat_data[model_name]
+                direction = "↑" if model_data['mean_shap'] > 0 else "↓"
+                print(f"  {feat_name:35} | SHAP: {model_data['mean_abs_shap']:.4f} | Напрям: {direction}")
+
+    def explain_single_prediction(self, input_data, supplier_profile=None, show_plot=True):
+        """
+        Пояснення одного конкретного прогнозу
+        
+        Args:
+            input_data: сирі дані (dict або DataFrame з полями EDRPOU, F_ITEMNAME тощо)
+            supplier_profile: профіль постачальника (опціонально)
+            show_plot: чи показувати waterfall plot
+        """
+        import shap
+        
+        if not hasattr(self, 'shap_results'):
+            raise ValueError("Спочатку запустіть analyze_with_shap()")
+        
+        # 1. Конвертуємо в правильний формат
+        if isinstance(input_data, pd.DataFrame):
+            input_dict = input_data.iloc[0].to_dict()
+        else:
+            input_dict = input_data
+        
+        # 2. Отримуємо EDRPOU для пошуку профілю
+        edrpou = input_dict.get('EDRPOU', '')
+        
+        # 3. Якщо профіль не переданий, намагаємось знайти
+        if supplier_profile is None and edrpou and hasattr(self, 'supplier_analyzer'):
+            supplier_profile = self.supplier_analyzer.get_supplier_profile(edrpou)
+        
+        # 4. Витягуємо ознаки через feature_extractor
+        features = self.feature_extractor.extract_features(input_dict, supplier_profile)
+        
+        # 5. Створюємо DataFrame з правильними назвами колонок
+        X_single = pd.DataFrame([features], columns=self.feature_names)
+        
+        # 6. Обробка даних
+        if hasattr(self, 'feature_processor'):
+            X_processed = self.feature_processor.transform(X_single)
+            X_processed = self.feature_extractor.create_interaction_features(X_processed)
+        else:
+            X_processed = X_single
+        
+        X_scaled = self.scalers['main'].transform(X_processed)
+        
+        # 7. Прогноз
+        predictions = {}
+        for model_name, model in self.models.items():
+            pred = model.predict_proba(X_scaled)[0][1]
+            predictions[model_name] = pred
+        
+        ensemble_pred = np.mean(list(predictions.values()))
+        
+        print(f"\n🎯 Прогноз: {ensemble_pred:.2%} ймовірність перемоги")
+        print("="*70)
+        
+        # 8. Виводимо значення ключових ознак
+        print("\n📋 Вхідні дані:")
+        print(f"  EDRPOU: {edrpou}")
+        print(f"  Назва позиції: {input_dict.get('F_ITEMNAME', 'N/A')}")
+        print(f"  Категорія: {input_dict.get('F_INDUSTRYNAME', 'N/A')}")
+        
+        print("\n📊 Витягнуті ознаки (топ-10):")
+        important_features = ['supplier_category_win_rate', 'supplier_win_rate', 
+                            'experience_type', 'has_category_experience',
+                            'supplier_experience', 'category_win_probability',
+                            'has_brand', 'supplier_stability', 
+                            'competitive_strength', 'supplier_vs_market_avg']
+        
+        for feat in important_features:
+            if feat in features:
+                print(f"  {feat:35}: {features[feat]:.4f}")
+        
+        # 9. Пояснення для кожної моделі
+        for model_name, results in self.shap_results.items():
+            print(f"\n📊 Пояснення від {model_name}:")
+            print(f"Прогноз моделі: {predictions[model_name]:.2%}")
+            
+            # Отримуємо SHAP values для цього прикладу
+            explainer = results['explainer']
+            shap_values = explainer.shap_values(X_scaled)
+            
+            if isinstance(shap_values, list):
+                shap_values = shap_values[1]  # Для класу 1
+            
+            # Сортуємо ознаки за впливом
+            feature_impact = list(zip(self.feature_names, shap_values[0], X_processed.iloc[0]))
+            feature_impact.sort(key=lambda x: abs(x[1]), reverse=True)
+            
+            print("\nТоп-10 факторів:")
+            for feat_name, impact, feat_value in feature_impact[:10]:
+                direction = "збільшує" if impact > 0 else "зменшує"
+                print(f"  {feat_name:30} = {feat_value:8.3f} | SHAP: {impact:+.4f} ({direction})")
+            
+            # Waterfall plot для візуалізації
+            if show_plot and model_name == 'random_forest':  # Тільки для однієї моделі
+                try:
+                    import matplotlib.pyplot as plt
+                    shap.plots.waterfall(
+                        shap.Explanation(
+                            values=shap_values[0],
+                            base_values=results['expected_value'],
+                            data=X_processed.iloc[0],
+                            feature_names=self.feature_names
+                        ),
+                        max_display=15
+                    )
+                    plt.tight_layout()
+                    plt.show()
+                except Exception as e:
+                    print(f"Не вдалось створити waterfall plot: {e}")
+        
+        return {
+            'prediction': ensemble_pred,
+            'model_predictions': predictions,
+            'features': features,
+            'top_factors': feature_impact[:10]
+        }
+
+
+
+
 
     def train_model(self, validation_split: float = 0.2, cv_folds: int = 5) -> Dict[str, Any]:
         """
@@ -381,18 +793,17 @@ class PredictionEngine:
                     'metrics': perf
                 })
 
-        # ===== [9] ЗАМІНА: Покращена оптимізація ваг ансамблю =====
-        # Замість: self._optimize_ensemble_weights(X_test_scaled, y_test)
+        # ===== [9] ЗАМІНА: Покращена оптимізація ваг ансамблю =====      
         # Використовуємо:
-        self._optimize_ensemble_weights_advanced(X_test_processed, y_test)  # <- НОВЕ
+        self._optimize_ensemble_weights_advanced(X_test_processed, y_test)  
         
         # Оцінка ансамблю
-        ensemble_pred = self.predict_proba_ensemble(X_test_processed)  # <- змінено
+        ensemble_pred = self.predict_proba_ensemble(X_test_processed) 
         ensemble_auc = roc_auc_score(y_test, ensemble_pred)
         self.logger.info(f"Ensemble AUC: {ensemble_auc:.4f}")
         self.model_performance['ensemble'] = {'test_auc': ensemble_auc}
-        
-        # ===== НОВЕ: Збереження додаткової інформації =====
+
+        # ===== Збереження додаткової інформації =====
         self.training_info = {
             'date': datetime.now().isoformat(),
             'n_samples': len(X_train),

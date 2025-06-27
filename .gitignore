@@ -62,3 +62,5 @@ market_statistics1.json
 supplier_profiles_with_clusters1.json
 all_data_cache2.pkl
 marketAnalysis.MD
+shap_analysis_report.json
+files/tender_system_trained2.pkl

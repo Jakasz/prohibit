@@ -49,7 +49,7 @@ def main():
                 logger.info(f"   • Тендерів: {stats['total_tenders']:,}")
                 logger.info(f"   • Постачальників: {stats['total_suppliers']:,}")
                 logger.info(f"   • Середня конкуренція: {stats['avg_suppliers_per_tender']:.1f} учасників/тендер")
-                logger.info(f"   • Win rate новачків: {stats['new_supplier_win_rate']:.1%}")
+                # logger.info(f"   • Win rate новачків: {stats['new_supplier_win_rate']:.1%}")
                 logger.info(f"   • Відкритість ринку: {stats['market_openness']:.1%}")
                 logger.info(f"   • Бар'єр входу: {stats['entry_barrier_score']:.1%}")
     else:

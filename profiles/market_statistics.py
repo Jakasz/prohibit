@@ -400,20 +400,42 @@ class MarketStatistics:
             }
 
 
-    def get_cluster_context(self, cluster_name: str) -> Dict[str, Any]:            
-        """Отримання контексту кластера для прогнозування"""            
+    def get_cluster_context(self, cluster_name: str) -> Dict[str, Any]:
+        """Отримання контексту кластера для прогнозування"""
+        
         if cluster_name not in self.cluster_stats:
-            # Повертаємо дефолтні значення
-            return {
-                'cluster_name': cluster_name,
-                'avg_suppliers_per_tender': 3.0,
-                'avg_new_supplier_win_rate': 0.2,
-                'avg_market_openness': 0.7,
-                'avg_entry_barrier': 0.5,
-                'cluster_complexity': 0.5
-            }
+            # Обчислюємо статистику для кластера
+            cluster_categories = self.category_manager.categories_map.get(cluster_name, [])
             
-        return self.cluster_stats[cluster_name]
+            if cluster_categories:
+                # Агрегуємо статистику по всіх категоріях кластера
+                total_suppliers = set()
+                total_tenders = 0
+                total_positions = 0
+                win_rates = []
+                
+                for category in cluster_categories:
+                    if category in self.category_stats:
+                        cat_stats = self.category_stats[category]
+                        total_tenders += cat_stats['total_tenders']
+                        total_positions += cat_stats['total_positions']
+                        win_rates.append(cat_stats['empirical_win_probability'])
+                
+                avg_win_probability = np.mean(win_rates) if win_rates else 0.33
+                
+                self.cluster_stats[cluster_name] = {
+                    'categories_count': len(cluster_categories),
+                    'total_tenders': total_tenders,
+                    'total_positions': total_positions,
+                    'avg_win_probability': avg_win_probability,
+                    'cluster_complexity': len(cluster_categories) / 10,  # Нормалізована складність
+                }
+        
+        return self.cluster_stats.get(cluster_name, {
+            'avg_win_probability': 0.33,
+            'cluster_complexity': 0.5
+        })
+
 
 
     
@@ -446,7 +468,7 @@ class MarketStatistics:
             return {
                 'avg_suppliers_per_tender': 3.0,
                 'empirical_win_probability': 0.33,
-                'new_supplier_win_rate': 0.2,
+                # 'new_supplier_win_rate': 0.2,
                 'market_openness': 0.7,
                 'entry_barrier_score': 0.5
             }
@@ -456,7 +478,7 @@ class MarketStatistics:
         return {
             'avg_suppliers_per_tender': stats['avg_suppliers_per_tender'],
             'empirical_win_probability': stats['empirical_win_probability'],
-            'new_supplier_win_rate': stats['new_supplier_win_rate'],
+            # 'new_supplier_win_rate': stats['new_supplier_win_rate'],
             'market_openness': stats['market_openness'],
             'entry_barrier_score': stats['entry_barrier_score'],
             'market_concentration': stats['market_concentration_hhi'],
@@ -508,7 +530,7 @@ class MarketStatistics:
             'total_positions': 0,
             'avg_suppliers_per_tender': 0,
             'empirical_win_probability': 0,
-            'new_supplier_win_rate': 0.2,
+            # 'new_supplier_win_rate': 0.2,
             'market_openness': 1.0,
             'entry_barrier_score': 0.0,
             'market_concentration_hhi': 0.0,

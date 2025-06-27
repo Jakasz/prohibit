@@ -1,5 +1,7 @@
 # 1. Ініціалізація системи
 from pathlib import Path
+
+import pandas as pd
 from tender_analysis_system import TenderAnalysisSystem
 
 
@@ -68,14 +70,50 @@ except Exception as e:
 system.save_system("tender_system_trained.pkl")
 print("💾 Система збережена!")
 
-# 6. Тестове передбачення
-test_tender = {
+print("\n🔍 SHAP АНАЛІЗ МОДЕЛІ")
+print("="*60)
+
+try:
+    # Запускаємо SHAP аналіз
+    shap_results = system.predictor.analyze_with_shap(
+        sample_size=2000,  # Аналізуємо 2000 прикладів
+        save_plots=True    # Зберігаємо графіки
+    )
+    
+    print("\n✅ SHAP аналіз завершено!")
+    print("📊 Графіки збережено в папці shap_plots/")
+    print("📄 Детальний звіт в shap_analysis_report.json")
+    
+except Exception as e:
+    print(f"⚠️ Не вдалося виконати SHAP аналіз: {e}")
+
+# 7. Тестове пояснення одного прогнозу
+print("\n🎯 ПРИКЛАД ПОЯСНЕННЯ КОНКРЕТНОГО ПРОГНОЗУ")
+print("="*60)
+
+# Тестові дані у правильному форматі
+test_example = {
     "EDRPOU": "12345678",
     "F_ITEMNAME": "Фільтр паливний для трактора John Deere",
-    "F_TENDERNUMBER": "UA-2024-01-01-000001",
-    "F_INDUSTRYNAME": "Сільське господарство"
+    "F_TENDERNAME": "Закупівля запчастин для сільськогосподарської техніки",
+    "F_INDUSTRYNAME": "Сільськогосподарські запчастини"
 }
 
-predictions = system.predict_tender_outcomes([test_tender])
-print(f"\n🔮 Тестове передбачення:")
-print(f"Ймовірність перемоги: {predictions['predictions'].get(test_tender['F_TENDERNUMBER'], {}).get('probability', 0):.2%}")
+try:
+    # Опціонально: якщо маємо профіль постачальника
+    supplier_profile = None
+    if system.supplier_analyzer:
+        supplier_profile = system.supplier_analyzer.get_supplier_profile(test_example['EDRPOU'])
+    
+    # Викликаємо пояснення
+    explanation = system.predictor.explain_single_prediction(
+        test_example, 
+        supplier_profile=supplier_profile,
+        show_plot=False  # True якщо хочете графік
+    )
+    
+except Exception as e:
+    print(f"Помилка пояснення: {e}")
+    import traceback
+    traceback.print_exc()
+
