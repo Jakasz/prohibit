@@ -1,4 +1,5 @@
 import json
+from pyexpat import model
 import numpy as np
 import pandas as pd
 import logging
@@ -12,7 +13,13 @@ from typing import Dict, List, Tuple, Optional, Any
 import pickle
 import joblib
 from datetime import datetime
+from sklearn.ensemble import HistGradientBoostingClassifier
 import matplotlib.pyplot as plt
+try:
+    import lightgbm as lgb
+    LIGHTGBM_AVAILABLE = True
+except ImportError:
+    LIGHTGBM_AVAILABLE = False
 
 from profiles.supplier_profiler import SupplierProfile
 
@@ -754,10 +761,19 @@ class PredictionEngine:
                 model_params['scale_pos_weight'] = scale_pos_weight
                 self.logger.info(f"XGBoost scale_pos_weight: {scale_pos_weight:.2f}")
                 
-            elif model_name == 'gradient_boosting':
-                # Для GradientBoosting можна додати sample_weight при fit
-                # Зберігаємо для використання пізніше
-                self._gb_sample_weights = self._calculate_sample_weights(y_train)
+            if model_name == 'lightgbm' and not use_calibration:
+                # LightGBM з early stopping
+                eval_set = [(X_test_scaled, y_test)]
+                model.fit(
+                    X_train_scaled, y_train,
+                    eval_set=eval_set,
+                    eval_metric='auc',
+                    callbacks=[lgb.early_stopping(stopping_rounds=50), lgb.log_evaluation(0)]
+                )
+            else:
+                # Звичайне навчання
+                model.fit(X_train_scaled, y_train)
+
             
             # Створення моделі з оновленими параметрами
             model = model_class(**model_params)
@@ -827,9 +843,21 @@ class PredictionEngine:
         y_test_pred = model.predict_proba(X_test)[:, 1]
         train_auc = roc_auc_score(y_train, y_train_pred)
         test_auc = roc_auc_score(y_test, y_test_pred)
+
+        if model_name in ['lightgbm', 'xgboost', 'random_forest']:
+            cv_n_jobs = -1  # Всі ці моделі добре паралеляться
+        else:
+            cv_n_jobs = 1  # Для інших моделей (на випадок)
+
+
         # --- Фікс для зависань gradient_boosting ---
         cv_n_jobs = 1 if model_name == 'gradient_boosting' else -1
-        cv_scores = cross_val_score(model, X_train, y_train, cv=5, scoring='roc_auc', n_jobs=cv_n_jobs)
+        cv_scores = cross_val_score(
+            model, X_train, y_train, 
+            cv=3,  # Зменшено з 5 до 3
+            scoring='roc_auc', 
+            n_jobs=cv_n_jobs
+        )
         precision, recall, thresholds = precision_recall_curve(y_test, y_test_pred)
         f1_scores = 2 * (precision * recall) / (precision + recall + 1e-10)
         best_threshold_idx = np.argmax(f1_scores)
