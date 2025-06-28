@@ -77,18 +77,21 @@ class PredictionEngine:
             self.model_configs['xgboost'] = {
                 'class': XGBClassifier,
                 'params': {
-                    'n_estimators': 300,
-                    'max_depth': 8,
-                    'learning_rate': 0.05,
-                    'subsample': 0.7,
-                    'colsample_bytree': 0.8,
-                    'min_child_weight': 10,
-                    'gamma': 0.1,
-                    'random_state': 42,
-                    'n_jobs': -1,
-                    'eval_metric': 'logloss',
-                    'tree_method': 'hist'
-                }
+                'n_estimators': 300,
+                'max_depth': 6,  
+                'learning_rate': 0.08,  
+                'subsample': 0.8,  
+                'colsample_bytree': 0.8,
+                'min_child_weight': 10, 
+                'gamma': 0,  
+                'random_state': 42,
+                'n_jobs': -1,
+                'eval_metric': 'logloss',
+                'tree_method': 'hist',
+                'reg_alpha': 0,  
+                'reg_lambda': 1,  
+                'base_score': 0.5  
+             }
             }
 
 
@@ -824,7 +827,9 @@ class PredictionEngine:
         y_test_pred = model.predict_proba(X_test)[:, 1]
         train_auc = roc_auc_score(y_train, y_train_pred)
         test_auc = roc_auc_score(y_test, y_test_pred)
-        cv_scores = cross_val_score(model, X_train, y_train, cv=5, scoring='roc_auc', n_jobs=-1)
+        # --- Фікс для зависань gradient_boosting ---
+        cv_n_jobs = 1 if model_name == 'gradient_boosting' else -1
+        cv_scores = cross_val_score(model, X_train, y_train, cv=5, scoring='roc_auc', n_jobs=cv_n_jobs)
         precision, recall, thresholds = precision_recall_curve(y_test, y_test_pred)
         f1_scores = 2 * (precision * recall) / (precision + recall + 1e-10)
         best_threshold_idx = np.argmax(f1_scores)

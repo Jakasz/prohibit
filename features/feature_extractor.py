@@ -195,13 +195,13 @@ class FeatureExtractor:
             features['supplier_vs_market_avg'] = 0
         
         # 6. Текстові ознаки (тільки базові)
-        item_name = item.get('F_ITEMNAME', '')
+        # item_name = item.get('F_ITEMNAME', '')
         # features['item_name_length'] = len(item_name)
         # features['item_name_words'] = len(item_name.split())
         
         # Наявність брендів
-        item_upper = item_name.upper()
-        features['has_brand'] = int(any(brand in item_upper for brand in self.brand_patterns))
+        # item_upper = item_name.upper()
+        # features['has_brand'] = int(any(brand in item_upper for brand in self.brand_patterns))
         
         # 7. Складені ознаки
         features['supplier_category_fit'] = features['supplier_category_win_rate'] * features['supplier_specialization']
