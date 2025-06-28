@@ -69,14 +69,20 @@ class PredictionEngine:
                     'random_state': 42
                 }
             },
-            'gradient_boosting': {
-                'class': GradientBoostingClassifier,
+            'lightgbm': {
+                'class': lgb.LGBMClassifier,
                 'params': {
-                    'n_estimators': 250,
-                    'learning_rate': 0.05,
-                    'max_depth': 5,
-                    'subsample': 0.7,
-                    'random_state': 42
+                    'n_estimators': 200,
+                    'learning_rate': 0.1,
+                    'num_leaves': 31,
+                    'max_depth': 7,
+                    'random_state': 42,
+                    'n_jobs': -1,
+                    'boosting_type': 'gbdt',
+                    'objective': 'binary',
+                    'metric': 'auc',
+                    'verbosity': -1,
+                    'force_col_wise': True
                 }
             }
         }
@@ -154,7 +160,7 @@ class PredictionEngine:
                     # Створення пояснювача
                     if model_name == 'random_forest':
                         explainer = shap.TreeExplainer(model)
-                    elif model_name == 'gradient_boosting':
+                    elif model_name == 'lightgbm':
                         explainer = shap.TreeExplainer(model)
                     elif model_name == 'xgboost' and hasattr(model, 'get_booster'):
                         explainer = shap.TreeExplainer(model)
@@ -761,6 +767,26 @@ class PredictionEngine:
                 model_params['scale_pos_weight'] = scale_pos_weight
                 self.logger.info(f"XGBoost scale_pos_weight: {scale_pos_weight:.2f}")
                 
+            
+            # Створення моделі з оновленими параметрами
+            model = model_class(**model_params)
+            
+            # [7] Калібрація (БЕЗ ЗМІН)
+            if use_calibration:
+                model = CalibratedClassifierCV(model, cv=3)
+            
+            # ===== [8] Тренування (З УРАХУВАННЯМ ОСОБЛИВОСТЕЙ) =====
+            # if model_name == 'gradient_boosting' and hasattr(self, '_gb_sample_weights'):
+            #     # Спеціальне тренування для GradientBoosting
+            #     if use_calibration:
+            #         # CalibratedClassifierCV не підтримує sample_weight напряму
+            #         model.fit(X_train_scaled, y_train)
+            #     else:
+            #         model.fit(X_train_scaled, y_train, sample_weight=self._gb_sample_weights)
+            # else:
+            #     # Звичайне тренування
+            #     model.fit(X_train_scaled, y_train)
+
             if model_name == 'lightgbm' and not use_calibration:
                 # LightGBM з early stopping
                 eval_set = [(X_test_scaled, y_test)]
@@ -772,27 +798,7 @@ class PredictionEngine:
                 )
             else:
                 # Звичайне навчання
-                model.fit(X_train_scaled, y_train)
-
-            
-            # Створення моделі з оновленими параметрами
-            model = model_class(**model_params)
-            
-            # [7] Калібрація (БЕЗ ЗМІН)
-            if use_calibration:
-                model = CalibratedClassifierCV(model, cv=3)
-            
-            # ===== [8] Тренування (З УРАХУВАННЯМ ОСОБЛИВОСТЕЙ) =====
-            if model_name == 'gradient_boosting' and hasattr(self, '_gb_sample_weights'):
-                # Спеціальне тренування для GradientBoosting
-                if use_calibration:
-                    # CalibratedClassifierCV не підтримує sample_weight напряму
-                    model.fit(X_train_scaled, y_train)
-                else:
-                    model.fit(X_train_scaled, y_train, sample_weight=self._gb_sample_weights)
-            else:
-                # Звичайне тренування
-                model.fit(X_train_scaled, y_train)
+                model.fit(X_train_scaled, y_train)    
             
             # Збереження моделі
             self.models[model_name] = model
