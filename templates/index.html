@@ -910,7 +910,7 @@
                }
 
                // Fetch categories_map.json for cluster and category counts
-               const categoriesResponse = await fetch('data/categories_map.json');
+               const categoriesResponse = await fetch('/static/data/categories_map.json'); // Updated URL
                if (categoriesResponse.ok) {
                    const categoriesData = await categoriesResponse.json();
 
