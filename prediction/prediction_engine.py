@@ -360,7 +360,7 @@ class PredictionEngine:
                     'mean_shap': float(shap_vals.mean()),
                     'std_shap': float(shap_vals.std()),
                     'positive_impact_ratio': float((shap_vals > 0).mean()),
-                    'feature_importance_rank': None  # Заповнимо пізніше
+                    'feature_importance_rank': None  # Заповнімо пізніше
                 }
             
             report['feature_analysis'][feature_name] = feature_report
@@ -936,6 +936,61 @@ class PredictionEngine:
         preds /= sum(self.ensemble_weights.values())
         
         return preds
+    
+
+    def custom_predict_tender(self, tender_items, supplier_profiles):
+        """
+        Повертає список результатів для кожного тендера.
+        """
+        results = []
+        for item in tender_items:
+            edrpou = item.get('EDRPOU')
+            supplier_profile = supplier_profiles.get(edrpou) if supplier_profiles else None
+
+            # 1. Витяг ознак
+            features = self.feature_extractor.extract_features(item, supplier_profile)
+            X_single = pd.DataFrame([features])
+
+            # 2. Заповнення відсутніх колонок
+            for col in self.feature_names:
+                if col not in X_single.columns:
+                    X_single[col] = 0
+            X_single = X_single[self.feature_names]
+
+            # 3. Додаємо interaction features
+            X_single = self.feature_extractor.create_interaction_features(X_single)
+
+            # 4. Обробка через feature processor
+            if hasattr(self, 'feature_processor'):
+                X_processed = self.feature_processor.transform(X_single)
+            else:
+                X_processed = X_single
+
+            # 5. Масштабування
+            X_scaled = self.scalers['main'].transform(X_processed)
+
+            # 6. Прогнози від кожної моделі
+            predictions = {}
+            for model_name, model in self.models.items():
+                pred = model.predict_proba(X_scaled)[0][1]
+                predictions[model_name] = pred
+
+            # 7. Ансамбль
+            ensemble_weights = self.ensemble_weights
+            ensemble_pred = sum(predictions[name] * ensemble_weights.get(name, 1.0) for name in predictions)
+            ensemble_pred /= sum(ensemble_weights.values())
+
+            # 8. Формування результату
+            results.append({
+                'tender_number': item.get('F_TENDERNUMBER'),
+                'edrpou': edrpou,
+                'probability': ensemble_pred,
+                'model_predictions': predictions,
+                'features': features
+            })
+        return results
+
+
 
     def predict_tender(self, tender_items: List[Dict], supplier_profiles: Dict) -> List[Dict]:
         features_list = []

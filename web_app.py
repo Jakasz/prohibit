@@ -187,7 +187,7 @@ def predict():
         
         # Прогнозування
         start_time = time.time()
-        predictions = system.predictor.predict_tender(
+        predictions = system.predictor.custom_predict_tender(
             tender_items=[test_tender],
             supplier_profiles=system.supplier_profiler.profiles
         )
@@ -225,8 +225,7 @@ def predict():
             response = {
                 'success': True,
                 'prediction': {
-                    'probability': result['probability'],
-                    'confidence': result['confidence'],
+                    'probability': result['probability'],                    
                     'risk_factors': result.get('risk_factors', [])
                 },
                 'supplier_info': {
@@ -239,8 +238,7 @@ def predict():
             response = {
                 'success': True,
                 'prediction': {
-                    'probability': result['probability'],
-                    'confidence': result['confidence'],
+                    'probability': result['probability'],                    
                     'risk_factors': result.get('risk_factors', [])
                 },
                 'supplier_info': {
@@ -601,7 +599,7 @@ def get_system_statistics():
             'total_clusters': 0,
             'avg_win_rate': 0,
             'db_size': 94440000,
-            'model_accuracy': 0.69,  # Можна отримати з system.model_performance якщо є
+            'model_accuracy': 0.76,  # Можна отримати з system.model_performance якщо є
             'market_positions': {},
             'top_categories': [],
             'last_training_date': None,
