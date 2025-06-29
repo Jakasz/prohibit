@@ -464,7 +464,7 @@ class PredictionEngine:
         important_features = ['supplier_category_win_rate', 'supplier_win_rate', 
                             'experience_type', 'has_category_experience',
                             'supplier_experience', 'category_win_probability',
-                            'has_brand', 'supplier_stability', 
+                            'supplier_stability', 
                             'competitive_strength', 'supplier_vs_market_avg']
         
         for feat in important_features:

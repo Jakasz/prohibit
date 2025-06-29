@@ -66,7 +66,7 @@ def analyze_single_prediction(system, test_data):
     market_features = ['category_avg_suppliers', 'category_win_probability', 'category_market_openness',
                       'category_entry_barrier', 'is_new_supplier', 'supplier_vs_market_avg']
     competition_features = ['competitor_top_avg_win_rate', 'supplier_vs_top_competitors']
-    other_features = ['has_brand', 'supplier_category_fit', 'competitive_strength']
+    other_features = ['supplier_category_fit', 'competitive_strength']
     
     # Виводимо по групах
     print("\n🎯 ДОСВІД В КАТЕГОРІЇ:")
@@ -317,10 +317,6 @@ def suggest_improvements(features, predictions):
     if features.get('supplier_win_rate', 0) < 0.3:
         potential_gain = 0.1
         print(f"   • Покращення загального win rate: +{potential_gain:.0%}")
-    
-    if features.get('has_brand', 0) == 0:
-        potential_gain = 0.05
-        print(f"   • Робота з брендовими товарами: +{potential_gain:.0%}")
 
 def main():
     """Головна функція аналізу"""
