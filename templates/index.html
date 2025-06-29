@@ -648,17 +648,17 @@
             </div>
             <div class="stat-card">
                 <div class="stat-icon">
-                    <i class="fas fa-cubes"></i> {/* Icon changed for Clusters */}
+                    <i class="fas fa-cubes"></i> 
                 </div>
-                <div class="stat-value" id="totalClusters">-</div> {/* ID changed for clarity, was totalTenders */}
-                <div class="stat-label">Кластерів</div> {/* Label changed */}
+                <div class="stat-value" id="totalClusters">-</div> 
+                <div class="stat-label">Кластерів</div> 
             </div>
             <div class="stat-card">
                 <div class="stat-icon">
-                    <i class="fas fa-tags"></i> {/* Icon changed for Categories */}
+                    <i class="fas fa-tags"></i> 
                 </div>
-                <div class="stat-value" id="totalCategories">-</div> {/* ID changed for clarity, was avgWinRate */}
-                <div class="stat-label">Категорій</div> {/* Label changed */}
+                <div class="stat-value" id="totalCategories">-</div> 
+                <div class="stat-label">Категорій</div> 
             </div>
             <div class="stat-card">
                 <div class="stat-icon">
@@ -910,7 +910,7 @@
                }
 
                // Fetch categories_map.json for cluster and category counts
-               const categoriesResponse = await fetch('data/categories_map.json');
+               const categoriesResponse = await fetch('static/categories_map.json');
                if (categoriesResponse.ok) {
                    const categoriesData = await categoriesResponse.json();
 
