@@ -14,7 +14,7 @@
             --text-secondary-light: #16213e;
             --border-light: #06d6a0;
             --shadow-light: rgba(6, 214, 160, 0.2);
-            
+
             --primary-dark: #928dab;
             --secondary-dark: #1f1c2c;
             --text-dark: #f8ffe5;
@@ -22,7 +22,7 @@
             --border-dark: #928dab;
             --shadow-dark: rgba(146, 141, 171, 0.2);
         }
-        
+
         [data-theme="light"] {
             --primary-color: var(--primary-light);
             --secondary-color: var(--secondary-light);
@@ -36,7 +36,7 @@
             --input-bg: #ffffff;
             --drawer-bg: #ffffff;
         }
-        
+
         [data-theme="dark"] {
             --primary-color: var(--primary-dark);
             --secondary-color: var(--secondary-dark);
@@ -50,13 +50,13 @@
             --input-bg: #3a3a4e;
             --drawer-bg: #2a2a3e;
         }
-        
+
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
         }
-        
+
         body {
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background-color: var(--bg-primary);
@@ -65,7 +65,7 @@
             min-height: 100vh;
             overflow-x: hidden;
         }
-        
+
         /* Navigation Drawer */
         .nav-drawer {
             position: fixed;
@@ -80,17 +80,17 @@
             display: flex;
             flex-direction: column;
         }
-        
+
         .nav-drawer.active {
             left: 0;
         }
-        
+
         .drawer-header {
             padding: 2rem 1.5rem;
             background: var(--primary-color);
             color: var(--bg-secondary);
         }
-        
+
         .drawer-header h3 {
             margin: 0;
             font-size: 1.4rem;
@@ -99,13 +99,13 @@
             align-items: center;
             gap: 0.5rem;
         }
-        
+
         .drawer-nav {
             flex: 1;
             padding: 1.5rem 0;
             overflow-y: auto;
         }
-        
+
         .drawer-nav-item {
             display: flex;
             align-items: center;
@@ -116,32 +116,32 @@
             border-left: 4px solid transparent;
             margin-bottom: 0.25rem;
         }
-        
+
         .drawer-nav-item:hover {
             background: var(--shadow-color);
             border-left-color: var(--primary-color);
             color: var(--primary-color);
         }
-        
+
         .drawer-nav-item.active {
             background: var(--shadow-color);
             border-left-color: var(--primary-color);
             color: var(--primary-color);
             font-weight: 600;
         }
-        
+
         .drawer-nav-item i {
             width: 24px;
             margin-right: 1rem;
             font-size: 1.1rem;
         }
-        
+
         .drawer-footer {
             padding: 1.5rem;
             border-top: 1px solid var(--border-color);
             opacity: 0.8;
         }
-        
+
         .drawer-overlay {
             position: fixed;
             top: 0;
@@ -152,11 +152,11 @@
             display: none;
             z-index: 1040;
         }
-        
+
         .drawer-overlay.active {
             display: block;
         }
-        
+
         /* Top Bar */
         .top-bar {
             background: var(--card-bg);
@@ -169,7 +169,7 @@
             top: 0;
             z-index: 100;
         }
-        
+
         .menu-toggle {
             background: none;
             border: none;
@@ -180,12 +180,12 @@
             border-radius: 8px;
             transition: all 0.3s ease;
         }
-        
+
         .menu-toggle:hover {
             background: var(--shadow-color);
             color: var(--primary-color);
         }
-        
+
         .theme-toggle {
             background: var(--primary-color);
             border: none;
@@ -199,25 +199,25 @@
             gap: 0.5rem;
             font-weight: 500;
         }
-        
+
         .theme-toggle:hover {
             transform: translateY(-2px);
             box-shadow: 0 5px 15px var(--shadow-color);
         }
-        
+
         /* Main Content */
         .main-content {
             padding: 2rem 1rem;
             max-width: 1200px;
             margin: 0 auto;
         }
-        
+
         .hero-section {
             text-align: center;
             padding: 3rem 0;
             margin-bottom: 3rem;
         }
-        
+
         .hero-section h1 {
             font-size: 2.5rem;
             font-weight: 800;
@@ -228,21 +228,21 @@
             -webkit-text-fill-color: transparent;
             background-clip: text;
         }
-        
+
         .hero-section p {
             font-size: 1.25rem;
             color: var(--text-secondary);
             max-width: 600px;
             margin: 0 auto;
         }
-        
+
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
             gap: 1.5rem;
             margin-bottom: 3rem;
         }
-        
+
         .stat-card {
             background: var(--card-bg);
             padding: 2rem;
@@ -252,13 +252,13 @@
             transition: all 0.3s ease;
             border: 2px solid transparent;
         }
-        
+
         .stat-card:hover {
             transform: translateY(-5px);
             border-color: var(--primary-color);
             box-shadow: 0 8px 30px var(--shadow-color);
         }
-        
+
         .stat-icon {
             width: 60px;
             height: 60px;
@@ -271,20 +271,20 @@
             font-size: 1.5rem;
             margin: 0 auto 1rem;
         }
-        
+
         .stat-value {
             font-size: 2.5rem;
             font-weight: 800;
             color: var(--primary-color);
             margin-bottom: 0.5rem;
         }
-        
+
         .stat-label {
             font-size: 1rem;
             color: var(--text-secondary);
             font-weight: 500;
         }
-        
+
         /* Form Section */
         .form-card {
             background: var(--card-bg);
@@ -293,27 +293,27 @@
             box-shadow: 0 6px 30px var(--shadow-color);
             margin-bottom: 2rem;
         }
-        
+
         .form-header {
             margin-bottom: 2rem;
         }
-        
+
         .form-header h2 {
             font-size: 1.75rem;
             font-weight: 700;
             color: var(--text-primary);
             margin-bottom: 0.5rem;
         }
-        
+
         .form-header p {
             color: var(--text-secondary);
             font-size: 1.1rem;
         }
-        
+
         .form-group {
             margin-bottom: 1.5rem;
         }
-        
+
         .form-label {
             display: block;
             font-weight: 600;
@@ -321,12 +321,12 @@
             margin-bottom: 0.5rem;
             font-size: 0.95rem;
         }
-        
+
         .form-label i {
             color: var(--primary-color);
             margin-right: 0.5rem;
         }
-        
+
         .form-control {
             width: 100%;
             padding: 0.875rem 1.25rem;
@@ -337,18 +337,18 @@
             font-size: 1rem;
             transition: all 0.3s ease;
         }
-        
+
         .form-control:focus {
             outline: none;
             border-color: var(--primary-color);
             box-shadow: 0 0 0 4px var(--shadow-color);
         }
-        
+
         .form-control::placeholder {
             color: var(--text-secondary);
             opacity: 0.7;
         }
-        
+
         .form-hint {
             font-size: 0.875rem;
             color: var(--text-secondary);
@@ -357,7 +357,7 @@
             align-items: center;
             gap: 0.5rem;
         }
-        
+
         .btn-predict {
             width: 100%;
             padding: 1rem 2rem;
@@ -375,24 +375,24 @@
             gap: 0.75rem;
             margin-top: 2rem;
         }
-        
+
         .btn-predict:hover {
             transform: translateY(-2px);
             box-shadow: 0 8px 25px var(--shadow-color);
         }
-        
+
         .btn-predict:disabled {
             opacity: 0.6;
             cursor: not-allowed;
             transform: none;
         }
-        
+
         /* Results Section */
         .results-section {
             display: none;
             animation: fadeIn 0.5s ease;
         }
-        
+
         @keyframes fadeIn {
             from {
                 opacity: 0;
@@ -403,7 +403,7 @@
                 transform: translateY(0);
             }
         }
-        
+
         .result-card {
             background: var(--card-bg);
             padding: 2rem;
@@ -411,7 +411,7 @@
             box-shadow: 0 4px 20px var(--shadow-color);
             margin-bottom: 1.5rem;
         }
-        
+
         .result-card h3 {
             font-size: 1.5rem;
             font-weight: 700;
@@ -421,7 +421,7 @@
             align-items: center;
             gap: 0.75rem;
         }
-        
+
         .probability-meter {
             background: var(--bg-primary);
             height: 40px;
@@ -430,7 +430,7 @@
             margin: 1.5rem 0;
             position: relative;
         }
-        
+
         .probability-fill {
             height: 100%;
             background: linear-gradient(90deg, var(--primary-color), var(--primary-color));
@@ -442,7 +442,7 @@
             font-weight: 700;
             font-size: 1.1rem;
         }
-        
+
         .metric-item {
             display: flex;
             justify-content: space-between;
@@ -450,22 +450,22 @@
             padding: 1rem 0;
             border-bottom: 1px solid var(--border-color);
         }
-        
+
         .metric-item:last-child {
             border-bottom: none;
         }
-        
+
         .metric-label {
             font-weight: 500;
             color: var(--text-secondary);
         }
-        
+
         .metric-value {
             font-weight: 700;
             color: var(--primary-color);
             font-size: 1.1rem;
         }
-        
+
         .confidence-badge {
             display: inline-block;
             padding: 0.5rem 1.5rem;
@@ -475,22 +475,22 @@
             text-align: center;
             margin-top: 1rem;
         }
-        
+
         .confidence-high {
             background: var(--primary-color);
             color: var(--bg-secondary);
         }
-        
+
         .confidence-medium {
             background: #ffd93d;
             color: #1a1a2e;
         }
-        
+
         .confidence-low {
             background: #ff6b6b;
             color: white;
         }
-        
+
         .risk-item {
             display: inline-block;
             padding: 0.5rem 1rem;
@@ -502,7 +502,7 @@
             font-size: 0.9rem;
             font-weight: 500;
         }
-        
+
         /* Loading Overlay */
         .loading-overlay {
             position: fixed;
@@ -516,7 +516,7 @@
             align-items: center;
             z-index: 9999;
         }
-        
+
         .loading-content {
             background: var(--card-bg);
             border-radius: 20px;
@@ -525,7 +525,7 @@
             max-width: 400px;
             color: var(--text-primary);
         }
-        
+
         .spinner {
             width: 60px;
             height: 60px;
@@ -535,11 +535,11 @@
             animation: spin 1s linear infinite;
             margin: 0 auto 1.5rem;
         }
-        
+
         @keyframes spin {
             to { transform: rotate(360deg); }
         }
-        
+
         .progress {
             height: 8px;
             background: var(--bg-primary);
@@ -547,27 +547,27 @@
             overflow: hidden;
             margin-top: 1.5rem;
         }
-        
+
         .progress-bar {
             height: 100%;
             background: var(--primary-color);
             transition: width 0.3s ease;
         }
-        
+
         /* Responsive */
         @media (max-width: 768px) {
             .hero-section h1 {
                 font-size: 2rem;
             }
-            
+
             .stats-grid {
                 grid-template-columns: 1fr;
             }
-            
+
             .form-card {
                 padding: 1.5rem;
             }
-            
+
             .nav-drawer {
                 width: 100%;
                 left: -100%;
@@ -603,9 +603,9 @@
             <small>&copy; 2025 Tender AI System</small>
         </div>
     </div>
-    
+
     <div class="drawer-overlay" id="drawerOverlay"></div>
-    
+
     <!-- Top Bar -->
     <div class="top-bar">
         <button class="menu-toggle" id="menuToggle">
@@ -616,7 +616,7 @@
             <span id="themeText">Темна тема</span>
         </button>
     </div>
-    
+
     <!-- Loading Overlay -->
     <div class="loading-overlay" id="loadingOverlay">
         <div class="loading-content">
@@ -628,7 +628,7 @@
             <p class="mt-3 mb-0" id="loadingStatus">Будь ласка, зачекайте...</p>
         </div>
     </div>
-    
+
     <!-- Main Content -->
     <div class="main-content">
         <!-- Hero Section -->
@@ -636,7 +636,7 @@
             <h1>Система прогнозування тендерів</h1>
             <p>Використовуйте штучний інтелект для аналізу ймовірності перемоги в тендерах та оптимізації вашої стратегії участі</p>
         </div>
-        
+
         <!-- Statistics Grid -->
         <div class="stats-grid">
             <div class="stat-card">
@@ -648,17 +648,17 @@
             </div>
             <div class="stat-card">
                 <div class="stat-icon">
-                    <i class="fas fa-cubes"></i> {/* Icon changed for Clusters */}
+                    <i class="fas fa-file-contract"></i>
                 </div>
-                <div class="stat-value" id="totalClusters">-</div> {/* ID changed for clarity, was totalTenders */}
-                <div class="stat-label">Кластерів</div> {/* Label changed */}
+                <div class="stat-value" id="totalTenders">-</div>
+                <div class="stat-label">Тендерів</div>
             </div>
             <div class="stat-card">
                 <div class="stat-icon">
-                    <i class="fas fa-tags"></i> {/* Icon changed for Categories */}
+                    <i class="fas fa-percentage"></i>
                 </div>
-                <div class="stat-value" id="totalCategories">-</div> {/* ID changed for clarity, was avgWinRate */}
-                <div class="stat-label">Категорій</div> {/* Label changed */}
+                <div class="stat-value" id="avgWinRate">-</div>
+                <div class="stat-label">Середній Win Rate</div>
             </div>
             <div class="stat-card">
                 <div class="stat-icon">
@@ -668,23 +668,23 @@
                 <div class="stat-label">Точність моделі</div>
             </div>
         </div>
-        
+
         <!-- Form Section -->
         <div class="form-card">
             <div class="form-header">
                 <h2>Аналіз ймовірності перемоги</h2>
                 <p>Введіть дані тендера для отримання прогнозу</p>
             </div>
-            
+
             <form id="predictionForm">
                 <div class="form-group">
                     <label class="form-label">
                         <i class="fas fa-id-card"></i> ЄДРПОУ постачальника
                     </label>
-                    <input type="text" 
-                           class="form-control" 
-                           id="edrpou" 
-                           placeholder="Введіть 8-значний код ЄДРПОУ" 
+                    <input type="text"
+                           class="form-control"
+                           id="edrpou"
+                           placeholder="Введіть 8-значний код ЄДРПОУ"
                            maxlength="10"
                            required>
                     <div class="form-hint">
@@ -692,59 +692,59 @@
                         <span>Код ЄДРПОУ компанії-постачальника</span>
                     </div>
                 </div>
-                
+
                 <div class="form-group">
                     <label class="form-label">
                         <i class="fas fa-box"></i> Назва товару/послуги
                     </label>
-                    <input type="text" 
-                           class="form-control" 
-                           id="itemName" 
-                           placeholder="Наприклад: Фільтр паливний для John Deere" 
+                    <input type="text"
+                           class="form-control"
+                           id="itemName"
+                           placeholder="Наприклад: Фільтр паливний для John Deere"
                            required>
                     <div class="form-hint">
                         <i class="fas fa-info-circle"></i>
                         <span>Детальна назва позиції тендера</span>
                     </div>
                 </div>
-                
+
                 <div class="form-group">
                     <label class="form-label">
                         <i class="fas fa-file-contract"></i> Назва тендера
                     </label>
-                    <input type="text" 
-                           class="form-control" 
-                           id="tenderName" 
-                           placeholder="Наприклад: Закупівля запчастин для сільськогосподарської техніки" 
+                    <input type="text"
+                           class="form-control"
+                           id="tenderName"
+                           placeholder="Наприклад: Закупівля запчастин для сільськогосподарської техніки"
                            required>
                 </div>
-                
+
                 <div class="form-group">
                     <label class="form-label">
                         <i class="fas fa-industry"></i> Категорія/Галузь
                     </label>
-                    <input type="text" 
-                           class="form-control" 
-                           id="industryName" 
-                           placeholder="Наприклад: Будівельні матеріали" 
+                    <input type="text"
+                           class="form-control"
+                           id="industryName"
+                           placeholder="Наприклад: Будівельні матеріали"
                            required>
                     <div class="form-hint">
                         <i class="fas fa-info-circle"></i>
                         <span>Галузь або категорія товару/послуги</span>
                     </div>
                 </div>
-                
+
                 <button type="submit" class="btn-predict" id="predictBtn">
                     <i class="fas fa-magic"></i>
                     <span>Отримати прогноз</span>
                 </button>
             </form>
         </div>
-        
+
         <!-- Results Section -->
         <div class="results-section" id="resultsSection">
             <h2 style="margin-bottom: 2rem; font-weight: 700;">Результати аналізу</h2>
-            
+
             <!-- Probability Card -->
             <div class="result-card">
                 <h3><i class="fas fa-percentage"></i> Ймовірність перемоги</h3>
@@ -757,7 +757,7 @@
                     <span class="confidence-badge" id="confidenceBadge">-</span>
                 </div>
             </div>
-            
+
             <!-- Supplier Info Card -->
             <div class="result-card" id="supplierCard">
                 <h3><i class="fas fa-building"></i> Інформація про постачальника</h3>
@@ -765,7 +765,7 @@
                     <!-- Dynamic content -->
                 </div>
             </div>
-            
+
             <!-- Risk Factors Card -->
             <div class="result-card" id="riskCard" style="display: none;">
                 <h3><i class="fas fa-exclamation-triangle"></i> Фактори ризику</h3>
@@ -773,7 +773,7 @@
                     <!-- Dynamic content -->
                 </div>
             </div>
-            
+
             <!-- Competition Card -->
             <div class="result-card" id="competitionCard" style="display: none;">
                 <h3><i class="fas fa-users"></i> Аналіз конкуренції</h3>
@@ -783,33 +783,33 @@
             </div>
         </div>
     </div>
-    
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         // Global variables
         let systemInitialized = false;
-        
+
         // Theme management
         const htmlElement = document.documentElement;
         const themeToggle = document.getElementById('themeToggle');
         const themeIcon = document.getElementById('themeIcon');
         const themeText = document.getElementById('themeText');
-        
+
         // Load saved theme
         const savedTheme = localStorage.getItem('theme') || 'light';
         htmlElement.setAttribute('data-theme', savedTheme);
         updateThemeUI(savedTheme);
-        
+
         // Theme toggle
         themeToggle.addEventListener('click', () => {
             const currentTheme = htmlElement.getAttribute('data-theme');
             const newTheme = currentTheme === 'light' ? 'dark' : 'light';
-            
+
             htmlElement.setAttribute('data-theme', newTheme);
             localStorage.setItem('theme', newTheme);
             updateThemeUI(newTheme);
         });
-        
+
         function updateThemeUI(theme) {
             if (theme === 'dark') {
                 themeIcon.classList.remove('fa-moon');
@@ -821,29 +821,29 @@
                 themeText.textContent = 'Темна тема';
             }
         }
-        
+
         // Navigation drawer
         const menuToggle = document.getElementById('menuToggle');
         const navDrawer = document.getElementById('navDrawer');
         const drawerOverlay = document.getElementById('drawerOverlay');
-        
+
         menuToggle.addEventListener('click', () => {
             navDrawer.classList.add('active');
             drawerOverlay.classList.add('active');
         });
-        
+
         drawerOverlay.addEventListener('click', () => {
             navDrawer.classList.remove('active');
             drawerOverlay.classList.remove('active');
         });
-        
+
         // Show about dialog
         function showAbout() {
             navDrawer.classList.remove('active');
             drawerOverlay.classList.remove('active');
-            
+
             alert(`Система прогнозування тендерів v1.0
-            
+
 Розроблено для аналізу та прогнозування результатів тендерів з використанням машинного навчання.
 
 Основні можливості:
@@ -854,13 +854,13 @@
 
 Період даних: 01.01.2023 - 01.05.2025`);
         }
-        
+
         // System status check
         async function checkSystemStatus() {
             try {
                 const response = await fetch('/api/status');
                 const data = await response.json();
-                
+
                 if (data.initialized) {
                     systemInitialized = true;
                     hideLoading();
@@ -882,95 +882,61 @@
            document.getElementById('loadingMessage').textContent = message;
            document.getElementById('progressBar').style.width = progress + '%';
        }
-       
+
        function hideLoading() {
            document.getElementById('loadingOverlay').style.display = 'none';
        }
-       
+
        function showError(message) {
            hideLoading();
            alert('Помилка: ' + message);
        }
-       
+
        // Load statistics
        async function loadStatistics() {
            try {
-               // Fetch existing profile statistics
-               const profileStatsResponse = await fetch('/api/profiles/statistics');
-               if (profileStatsResponse.ok) {
-                   const stats = await profileStatsResponse.json();
-                   document.getElementById('totalSuppliers').textContent = formatNumber(stats.total_suppliers);
-                   // document.getElementById('totalTenders').textContent = formatNumber(stats.total_tenders); // Original line for tenders, now clusters
-                   // document.getElementById('avgWinRate').textContent = formatPercent(stats.avg_win_rate); // Original line for win rate, now categories
-                   document.getElementById('modelAccuracy').textContent = stats.model_accuracy ? formatPercent(stats.model_accuracy) : '76%'; // Use actual if available
-               } else {
-                   console.error('Error loading profile statistics:', profileStatsResponse.statusText);
-                   document.getElementById('totalSuppliers').textContent = 'N/A';
-                   document.getElementById('modelAccuracy').textContent = 'N/A';
-               }
+               const response = await fetch('/api/profiles/statistics');
+               const stats = await response.json();
 
-               // Fetch categories_map.json for cluster and category counts
-               const categoriesResponse = await fetch('data/categories_map.json');
-               if (categoriesResponse.ok) {
-                   const categoriesData = await categoriesResponse.json();
-
-                   // Calculate total number of clusters (top-level keys)
-                   const clusterCount = Object.keys(categoriesData).length;
-                   document.getElementById('totalClusters').textContent = formatNumber(clusterCount);
-
-                   // Calculate total number of categories (sum of items in all arrays)
-                   let categoryCount = 0;
-                   for (const clusterName in categoriesData) {
-                       if (Array.isArray(categoriesData[clusterName])) {
-                           categoryCount += categoriesData[clusterName].length;
-                       }
-                   }
-                   document.getElementById('totalCategories').textContent = formatNumber(categoryCount);
-               } else {
-                   console.error('Error loading categories_map.json:', categoriesResponse.statusText);
-                   document.getElementById('totalClusters').textContent = 'N/A';
-                   document.getElementById('totalCategories').textContent = 'N/A';
-               }
+               document.getElementById('totalSuppliers').textContent = formatNumber(stats.total_suppliers);
+               document.getElementById('totalTenders').textContent = formatNumber(stats.total_tenders);
+               document.getElementById('avgWinRate').textContent = formatPercent(stats.avg_win_rate);
+               document.getElementById('modelAccuracy').textContent = '76%'; // or from stats if available
            } catch (error) {
-               console.error('Error in loadStatistics:', error);
-               // Set all to N/A in case of a general error
-               document.getElementById('totalSuppliers').textContent = 'N/A';
-               document.getElementById('modelAccuracy').textContent = 'N/A';
-               document.getElementById('totalClusters').textContent = 'N/A';
-               document.getElementById('totalCategories').textContent = 'N/A';
+               console.error('Error loading statistics:', error);
            }
        }
-       
+
        // Format helpers
        function formatNumber(num) {
            return new Intl.NumberFormat('uk-UA').format(num);
        }
-       
+
        function formatPercent(value) {
            return Math.round(value * 100) + '%';
        }
-       
+
        // Form submission
        document.getElementById('predictionForm').addEventListener('submit', async (e) => {
            e.preventDefault();
-           
+
            if (!systemInitialized) {
                showError('Система ще не готова. Будь ласка, зачекайте...');
                return;
            }
-           
+
            const formData = {
                edrpou: document.getElementById('edrpou').value,
                item_name: document.getElementById('itemName').value,
                tender_name: document.getElementById('tenderName').value,
                industry_name: document.getElementById('industryName').value
            };
-           
+
            // Show loading state
            const predictBtn = document.getElementById('predictBtn');
            predictBtn.disabled = true;
            predictBtn.innerHTML = '<div class="spinner-border spinner-border-sm me-2" style="width: 20px; height: 20px;"></div><span>Аналізуємо...</span>';
-           
+
            try {
                const response = await fetch('/api/predict', {
                    method: 'POST',
@@ -979,9 +945,9 @@
                    },
                    body: JSON.stringify(formData)
                });
-               
+
                const result = await response.json();
-               
+
                if (result.success) {
                    displayResults(result);
                } else {
@@ -995,35 +961,35 @@
                predictBtn.innerHTML = '<i class="fas fa-magic"></i><span>Отримати прогноз</span>';
            }
        });
-       
+
        // Display results
        function displayResults(result) {
            // Show results section
            document.getElementById('resultsSection').style.display = 'block';
-           
+
            // Probability
            const probability = result.prediction.probability;
            const probabilityPercent = Math.round(probability * 100);
            const probabilityFill = document.getElementById('probabilityFill');
            const probabilityText = document.getElementById('probabilityText');
-           
+
            probabilityFill.style.width = '0%';
            setTimeout(() => {
                probabilityFill.style.width = probabilityPercent + '%';
                probabilityText.textContent = probabilityPercent + '%';
            }, 100);
-           
+
            // Confidence level
            const confidenceBadge = document.getElementById('confidenceBadge');
            const confidence = result.prediction.confidence;
-           confidenceBadge.textContent = confidence === 'high' ? 'Висока впевненість' : 
-                                        confidence === 'medium' ? 'Середня впевненість' : 
+           confidenceBadge.textContent = confidence === 'high' ? 'Висока впевненість' :
+                                        confidence === 'medium' ? 'Середня впевненість' :
                                         'Низька впевненість';
            confidenceBadge.className = 'confidence-badge confidence-' + confidence;
-           
+
            // Supplier info
            displaySupplierInfo(result.supplier_info);
-           
+
            // Risk factors
            if (result.prediction.risk_factors && result.prediction.risk_factors.length > 0) {
                document.getElementById('riskCard').style.display = 'block';
@@ -1034,46 +1000,46 @@
            } else {
                document.getElementById('riskCard').style.display = 'none';
            }
-           
+
            // Competition analysis
            if (result.competition) {
                displayCompetitionAnalysis(result.competition);
            }
-           
+
            // Scroll to results
            document.getElementById('resultsSection').scrollIntoView({ behavior: 'smooth' });
        }
-       
+
        // Display supplier info
        function displaySupplierInfo(supplierInfo) {
            const container = document.getElementById('supplierInfo');
-           
+
            let html = `
                <h5 style="margin-bottom: 1.5rem; font-weight: 600;">${supplierInfo.name || 'Невідомий постачальник'}</h5>
            `;
-           
+
            const metrics = [
                { label: 'ЄДРПОУ', value: supplierInfo.edrpou },
                { label: 'Загальна кількість тендерів', value: formatNumber(supplierInfo.total_tenders) },
                { label: 'Загальний win rate', value: formatPercent(supplierInfo.win_rate) },
                { label: 'Позиція на ринку', value: translateMarketPosition(supplierInfo.market_position) }
            ];
-           
+
            if (supplierInfo.reliability_score !== undefined) {
                metrics.push({ label: 'Рівень надійності', value: formatPercent(supplierInfo.reliability_score) });
            }
-           
+
            if (supplierInfo.specialization_score !== undefined) {
                metrics.push({ label: 'Рівень спеціалізації', value: formatPercent(supplierInfo.specialization_score) });
            }
-           
+
            if (supplierInfo.category_experience) {
-               metrics.push({ 
-                   label: 'Досвід в категорії', 
-                   value: `${supplierInfo.category_experience.total_tenders} тендерів (${formatPercent(supplierInfo.category_experience.win_rate)} перемог)` 
+               metrics.push({
+                   label: 'Досвід в категорії',
+                   value: `${supplierInfo.category_experience.total_tenders} тендерів (${formatPercent(supplierInfo.category_experience.win_rate)} перемог)`
                });
            }
-           
+
            metrics.forEach(metric => {
                html += `
                    <div class="metric-item">
@@ -1082,10 +1048,10 @@
                    </div>
                `;
            });
-           
+
            container.innerHTML = html;
        }
-       
+
        // Translate market position
        function translateMarketPosition(position) {
            const translations = {
@@ -1098,14 +1064,14 @@
            };
            return translations[position] || position;
        }
-       
+
        // Display competition analysis
        function displayCompetitionAnalysis(competition) {
            document.getElementById('competitionCard').style.display = 'block';
            const container = document.getElementById('competitionInfo');
-           
+
            let html = '';
-           
+
            if (competition.competition_forecast) {
                const forecast = competition.competition_forecast;
                html += `
@@ -1115,7 +1081,7 @@
                    </div>
                `;
            }
-           
+
            if (competition.category_metrics) {
                const metrics = competition.category_metrics;
                html += `
@@ -1133,7 +1099,7 @@
                    </div>
                `;
            }
-           
+
            if (competition.recommendations && competition.recommendations.length > 0) {
                html += '<div style="margin-top: 1.5rem;"><strong>Рекомендації:</strong><ul style="margin-top: 0.5rem;">';
                competition.recommendations.forEach(rec => {
@@ -1141,10 +1107,10 @@
                });
                html += '</ul></div>';
            }
-           
+
            container.innerHTML = html;
        }
-       
+
        // Translate competition level
        function translateCompetitionLevel(level) {
            const translations = {
@@ -1155,11 +1121,11 @@
            };
            return translations[level] || level;
        }
-       
+
        // Initialize on load
        window.addEventListener('load', () => {
            checkSystemStatus();
        });
    </script>
 </body>
-</html>    
+</html>
