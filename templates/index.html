@@ -757,6 +757,14 @@
                     <span class="confidence-badge" id="confidenceBadge">-</span>
                 </div>
             </div>
+
+            <!-- Prediction Context Card -->
+            <div class="result-card" id="predictionContextCard" style="display: none;"> {/* Initially hidden */}
+                <h3><i class="fas fa-info-circle"></i> Деталі прогнозу</h3>
+                <div id="predictionContextInfo">
+                    {/* Dynamic content will be added here by JavaScript */}
+                </div>
+            </div>
             
             <!-- Supplier Info Card -->
             <div class="result-card" id="supplierCard">
@@ -910,7 +918,7 @@
                }
 
                // Fetch categories_map.json for cluster and category counts
-               const categoriesResponse = await fetch('static/categories_map.json');
+               const categoriesResponse = await fetch('/static/data/categories_map.json'); // Updated URL
                if (categoriesResponse.ok) {
                    const categoriesData = await categoriesResponse.json();
 
@@ -983,7 +991,7 @@
                const result = await response.json();
                
                if (result.success) {
-                   displayResults(result);
+                   displayResults(result, formData.industry_name); // Pass industry_name
                } else {
                    showError(result.error || 'Помилка прогнозування');
                }
@@ -997,7 +1005,7 @@
        });
        
        // Display results
-       function displayResults(result) {
+       function displayResults(result, industryName) { // Added industryName parameter
            // Show results section
            document.getElementById('resultsSection').style.display = 'block';
            
@@ -1023,6 +1031,9 @@
            
            // Supplier info
            displaySupplierInfo(result.supplier_info);
+
+           // Prediction Context
+           displayPredictionContext(result, industryName); // Pass industryName
            
            // Risk factors
            if (result.prediction.risk_factors && result.prediction.risk_factors.length > 0) {
@@ -1156,6 +1167,126 @@
            return translations[level] || level;
        }
        
+       // Initialize on load
+       window.addEventListener('load', () => {
+           checkSystemStatus();
+       });
+
+       // Display Prediction Context
+       function displayPredictionContext(result, industryName) {
+           const contextCard = document.getElementById('predictionContextCard');
+           const contextInfoDiv = document.getElementById('predictionContextInfo');
+
+           if (!contextCard || !contextInfoDiv) return; // Safety check
+
+           let html = '';
+
+           // Category Name (from input)
+           html += `
+               <div class="metric-item">
+                   <span class="metric-label"><i class="fas fa-tag"></i> Категорія прогнозу</span>
+                   <span class="metric-value">${industryName || 'N/A'}</span>
+               </div>
+           `;
+
+           // Cluster Name (from API response)
+           let clusterName = 'N/A';
+           // Check if cluster_info and cluster_name exist and are not null/empty
+           if (result.cluster_info && result.cluster_info.cluster_name && result.cluster_info.cluster_name.trim() !== "") {
+               clusterName = result.cluster_info.cluster_name;
+           } else if (result.cluster_info && result.cluster_info.cluster_id) {
+               // Fallback if name is missing but ID is there, could indicate "Default Cluster" or similar
+               clusterName = `Кластер ID: ${result.cluster_info.cluster_id} (назву не вказано)`;
+           }
+
+           html += `
+               <div class="metric-item">
+                   <span class="metric-label"><i class="fas fa-cubes"></i> Прогнозний кластер</span>
+                   <span class="metric-value">${clusterName}</span>
+               </div>
+           `;
+
+           contextInfoDiv.innerHTML = html;
+           contextCard.style.display = 'block';
+       }
+
+       // Translate market position
+       function translateMarketPosition(position) {
+           const translations = {
+               'established_player': 'Досвідчений гравець',
+               'competitive_player': 'Конкурентоспроможний',
+               'active_participant': 'Активний учасник',
+               'emerging_player': 'Новий гравець',
+               'new_entrant': 'Новачок',
+               'unknown': 'Невизначено'
+           };
+           return translations[position] || position;
+       }
+
+       // Display competition analysis
+       function displayCompetitionAnalysis(competition) {
+           const competitionCard = document.getElementById('competitionCard');
+           const container = document.getElementById('competitionInfo');
+
+           if (!competitionCard || !container) return; // Safety check
+
+           let html = '';
+
+           if (competition.competition_forecast) {
+               const forecast = competition.competition_forecast;
+               html += `
+                   <div style="background: var(--bg-primary); padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+                       <strong>Прогноз конкуренції:</strong> ${translateCompetitionLevel(forecast.competition_level)}
+                       <br>Очікувана кількість учасників: ${forecast.expected_participants}
+                   </div>
+               `;
+           }
+
+           if (competition.category_metrics) {
+               const metrics = competition.category_metrics;
+               html += `
+                   <div class="metric-item">
+                       <span class="metric-label">Інтенсивність конкуренції</span>
+                       <span class="metric-value">${formatPercent(metrics.competition_intensity)}</span>
+                   </div>
+                   <div class="metric-item">
+                       <span class="metric-label">Середня кількість учасників</span>
+                       <span class="metric-value">${metrics.avg_participants.toFixed(1)}</span>
+                   </div>
+                   <div class="metric-item">
+                       <span class="metric-label">Стабільність ринку</span>
+                       <span class="metric-value">${formatPercent(metrics.market_stability)}</span>
+                   </div>
+               `;
+           }
+
+           if (competition.recommendations && competition.recommendations.length > 0) {
+               html += '<div style="margin-top: 1.5rem;"><strong>Рекомендації:</strong><ul style="margin-top: 0.5rem; padding-left: 20px;">'; // Added padding
+               competition.recommendations.forEach(rec => {
+                   html += `<li>${rec}</li>`;
+               });
+               html += '</ul></div>';
+           }
+
+           if (html) {
+               container.innerHTML = html;
+               competitionCard.style.display = 'block';
+           } else {
+               competitionCard.style.display = 'none';
+           }
+       }
+
+       // Translate competition level
+       function translateCompetitionLevel(level) {
+           const translations = {
+               'high': 'Висока конкуренція',
+               'medium': 'Середня конкуренція',
+               'low': 'Низька конкуренція',
+               'unknown': 'Невизначено'
+           };
+           return translations[level] || level;
+       }
+
        // Initialize on load
        window.addEventListener('load', () => {
            checkSystemStatus();
