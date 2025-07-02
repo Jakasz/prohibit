@@ -1014,7 +1014,7 @@ class PredictionEngine:
                 'tender_number': item.get('F_TENDERNUMBER'),
                 'edrpou': item.get('EDRPOU'),
                 'probability': probs[i],
-                'confidence': self._calculate_prediction_confidence(X.iloc[i], probs[i]),
+                'confidence': self.calculate_prediction_confidence(X.iloc[i], probs[i]),
                 'risk_factors': self._identify_risk_factors(X.iloc[i], probs[i])
             })
             for i, result in enumerate(results):
@@ -1026,10 +1026,10 @@ class PredictionEngine:
                 )
         return results
 
-    def _calculate_prediction_confidence(self, features: pd.Series, probability: float) -> str:
+    def calculate_prediction_confidence(self, probability: float) -> str:
         if probability > 0.8:
             return "high"
-        elif probability > 0.6:
+        elif probability > 0.5:
             return "medium"
         else:
             return "low"

@@ -1080,7 +1080,7 @@
            if (supplierInfo.category_experience) {
                metrics.push({ 
                    label: 'Досвід в категорії', 
-                   value: `${supplierInfo.category_experience.total_tenders} тендерів (${formatPercent(supplierInfo.category_experience.win_rate)} перемог)` 
+                   value: `${supplierInfo.category_experience.total_tenders} позицій (${formatPercent(supplierInfo.category_experience.win_rate)} перемог)` 
                });
            }
            
@@ -1131,7 +1131,7 @@
                html += `
                    <div class="metric-item">
                        <span class="metric-label">Інтенсивність конкуренції</span>
-                       <span class="metric-value">${formatPercent(metrics.competition_intensity)}</span>
+                       <span class="metric-value">${formatPercent(metrics.category_competition)}</span>
                    </div>
                    <div class="metric-item">
                        <span class="metric-label">Середня кількість учасників</span>
@@ -1205,8 +1205,74 @@
                </div>
            `;
 
+                  // Competitive Context Section
+           html += `<h6 style="margin-top: 1.5rem; margin-bottom: 1rem; font-weight: 600; color: var(--text-secondary);">
+                       <i class="fas fa-chart-line"></i> Конкурентний контекст
+                   </h6>`;
+
+           // Category Competition
+           if (result.competitive_context && result.competitive_context.category_competition !== undefined) {
+               html += `
+                   <div class="metric-item">
+                       <span class="metric-label"><i class="fas fa-users"></i> Інтенсивність конкуренції в категорії</span>
+                       <span class="metric-value">${formatPercent(result.competitive_context.category_competition)}</span>
+                   </div>
+               `;
+           }
+
+           // Market Concentration (HHI)
+           if (result.competitive_context && result.competitive_context.market_concentration !== undefined) {
+               const hhi = result.competitive_context.market_concentration;
+               let concentrationLevel = 'N/A';
+               if (hhi < 0.15) {
+                   concentrationLevel = 'Низька концентрація';
+               } else if (hhi < 0.25) {
+                   concentrationLevel = 'Помірна концентрація';
+               } else {
+                   concentrationLevel = 'Висока концентрація';
+               }
+               
+               html += `
+                   <div class="metric-item">
+                       <span class="metric-label"><i class="fas fa-globe"></i> Концентрація ринку (HHI)</span>
+                       <span class="metric-value">${hhi.toFixed(3)} (${concentrationLevel})</span>
+                   </div>
+               `;
+           }
+
+           // Entry Barriers
+           if (result.competitive_context && result.competitive_context.entry_barriers) {
+               const barriers = result.competitive_context.entry_barriers;
+               let barrierLevel = 'N/A';
+               let barrierValue = 0;
+               
+               // Handle both object and number formats
+               if (typeof barriers === 'object' && barriers.score !== undefined) {
+                   barrierValue = barriers.score;
+               } else if (typeof barriers === 'number') {
+                   barrierValue = barriers;
+               }
+               
+               if (barrierValue > 0) {
+                   if (barrierValue < 0.3) {
+                       barrierLevel = 'Низькі бар\'єри';
+                   } else if (barrierValue < 0.7) {
+                       barrierLevel = 'Середні бар\'єри';
+                   } else {
+                       barrierLevel = 'Високі бар\'єри';
+                   }
+                   
+                   html += `
+                       <div class="metric-item">
+                           <span class="metric-label"><i class="fas fa-shield-alt"></i> Бар\'єри входу на ринок</span>
+                           <span class="metric-value">${formatPercent(barrierValue)} (${barrierLevel})</span>
+                       </div>
+                   `;
+               }
+           }
+
            contextInfoDiv.innerHTML = html;
-           contextCard.style.display = 'block';
+           contextCard.style.display = 'block';       
        }
 
        // Translate market position
@@ -1246,7 +1312,7 @@
                html += `
                    <div class="metric-item">
                        <span class="metric-label">Інтенсивність конкуренції</span>
-                       <span class="metric-value">${formatPercent(metrics.competition_intensity)}</span>
+                       <span class="metric-value">${formatPercent(metrics.category_competition)}</span>
                    </div>
                    <div class="metric-item">
                        <span class="metric-label">Середня кількість учасників</span>

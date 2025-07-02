@@ -190,48 +190,38 @@ def predict():
         # Обробка результатів
         if predictions and len(predictions) > 0:
             result = predictions[0]
+            result['confidence'] = system.predictor.calculate_prediction_confidence(result.get('probability', 0.0))
 
-            # Інформація про кластер
-            cluster_info = None
-            if hasattr(system, 'category_mapper'):
-                cluster_id = system.category_mapper.get_cluster_id(data['industry_name'])
+            if hasattr(system, 'market_stats'):                
+                cluster_id = system.market_stats.get_category_cluster(data['industry_name'])
                 if cluster_id:
                     cluster_info = {
                         'cluster_id': cluster_id,
-                        'cluster_name': system.category_mapper.get_cluster_name(cluster_id),
-                        'related_categories': system.category_mapper.get_related_categories(data['industry_name'])[:5]
+                        'cluster_name': cluster_id,
+                        'related_categories': getattr(system.categories_manager, 'categories_map', {}).get(cluster_id, [])[:5]
                     }
+             
             
             # Конкурентний контекст
-            competitive_context = None
+            context = None
             if hasattr(system, 'market_stats'):
                 try:
-                    analytics = system.market_stats.get_category_analytics(data['industry_name'])
-                    competitive_context = {
-                        'category_competition': analytics.get('competition_intensity', 0),
-                        'market_concentration': analytics.get('market_concentration', 0),
-                        'entry_barriers': analytics.get('entry_barriers', {})
+                    # system.market_stats.load_statistics()
+                    analytics = system.market_stats.category_stats.get(data['industry_name'], {})
+                    context = {
+                        'category_competition1': analytics.get('competition_intensity', 0),
+                        'market_concentration': analytics.get('market_concentration_hhi', 0),
+                        'entry_barriers': analytics.get('entry_barrier_score', {})
                     }
                 except:
                     pass
-            
+                       
             response = {
                 'success': True,
                 'prediction': {
                     'probability': result['probability'],                    
-                    'risk_factors': result.get('risk_factors', [])
-                },
-                'supplier_info': {
-                },
-                'cluster_info': cluster_info,  # НОВЕ
-                'competitive_context': competitive_context,  # НОВЕ                
-                'processing_time': round(prediction_time, 3)
-            }                
-            response = {
-                'success': True,
-                'prediction': {
-                    'probability': result['probability'],                    
-                    'risk_factors': result.get('risk_factors', [])
+                    'risk_factors': result.get('risk_factors', []),
+                    'confidence': result.get('confidence', 0.0)
                 },
                 'supplier_info': {
                     'name': supplier_profile.name if supplier_profile else 'Невідомий постачальник',
@@ -239,7 +229,9 @@ def predict():
                     'total_tenders': supplier_profile.metrics.total_tenders if supplier_profile else 0,
                     'win_rate': supplier_profile.metrics.win_rate if supplier_profile else 0,
                     'market_position': supplier_profile.market_position if supplier_profile else 'unknown'
-                },                
+                },     
+                'cluster_info': cluster_info,  # НОВЕ
+                'competitive_context': context,  # НОВЕ             
                 'processing_time': round(prediction_time, 3)
             }
             

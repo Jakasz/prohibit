@@ -46,8 +46,6 @@ class CategoryManager:
         self.supplier_category_performance = defaultdict(lambda: defaultdict(dict))
         self.categories_map = {}  
         
-        # Базові категорії (fallback)
-        self.base_categories = self._init_base_categories()
         
         # Завантаження категорій з файлу
         self.load_category_mappings()
@@ -56,109 +54,6 @@ class CategoryManager:
         
         self.logger.info("✅ CategoryManager ініціалізовано")
     
-    def _init_base_categories(self) -> Dict[str, Dict]:
-        """Ініціалізація базових категорій"""
-        return {
-            "agricultural_parts": {
-                "id": "agricultural_parts",
-                "name": "Сільськогосподарські запчастини",
-                "active": True,
-                "keywords": ["запчаст", "втулка", "підшипник", "фільтр", "ремінь", 
-                           "поршень", "клапан", "насос", "гідравл", "трактор", "комбайн"],
-                "regex_patterns": [r"\b(запчаст|втулк|підшипник)\w*\b"],
-                "parent_category": None,
-                "subcategories": [],
-                "competition_level": "medium"
-            },
-            "electronics": {
-                "id": "electronics",
-                "name": "Електроніка та електротехніка",
-                "active": True,
-                "keywords": ["кабель", "роз'єм", "електр", "провід", "трансформатор", 
-                           "конденсатор", "резистор", "діод", "світлодіод", "лампа"],
-                "regex_patterns": [r"\b(електр|кабель|провід)\w*\b"],
-                "parent_category": None,
-                "subcategories": [],
-                "competition_level": "high"
-            },
-            "construction": {
-                "id": "construction",
-                "name": "Будівельні матеріали",
-                "active": True,
-                "keywords": ["цемент", "бетон", "арматура", "цегла", "плитка", 
-                           "фарба", "ізоляція", "покрівл", "сталь", "дерев"],
-                "regex_patterns": [r"\b(цемент|бетон|арматур)\w*\b"],
-                "parent_category": None,
-                "subcategories": [],
-                "competition_level": "medium"
-            },
-            "office_supplies": {
-                "id": "office_supplies",
-                "name": "Канцелярські товари та офісне обладнання",
-                "active": True,
-                "keywords": ["папір", "ручка", "картридж", "тонер", "канцел", 
-                           "меблі", "стіл", "стілець", "принтер", "сканер"],
-                "regex_patterns": [r"\b(папір|картридж|канцел)\w*\b"],
-                "parent_category": None,
-                "subcategories": [],
-                "competition_level": "high"
-            },
-            "medical": {
-                "id": "medical",
-                "name": "Медичні товари та обладнання",
-                "active": True,
-                "keywords": ["медичн", "шприц", "бинт", "маска", "рукавич", 
-                           "дезінфект", "ліки", "препарат", "апарат", "діагност"],
-                "regex_patterns": [r"\b(медичн|шприц|препарат)\w*\b"],
-                "parent_category": None,
-                "subcategories": [],
-                "competition_level": "low"
-            },
-            "food": {
-                "id": "food",
-                "name": "Продукти харчування",
-                "active": True,
-                "keywords": ["продукт", "молоко", "хліб", "м'ясо", "овоч", "фрукт", 
-                           "крупа", "цукор", "олія", "консерв", "харчов"],
-                "regex_patterns": [r"\b(продукт|молоко|харчов)\w*\b"],
-                "parent_category": None,
-                "subcategories": [],
-                "competition_level": "medium"
-            },
-            "fuel": {
-                "id": "fuel",
-                "name": "Паливо та мастильні матеріали",
-                "active": True,
-                "keywords": ["паливо", "бензин", "дизель", "газ", "мазут", "солярка", 
-                           "масло", "мастил", "антифриз"],
-                "regex_patterns": [r"\b(паливо|бензин|дизель)\w*\b"],
-                "parent_category": None,
-                "subcategories": [],
-                "competition_level": "low"
-            },
-            "services": {
-                "id": "services",
-                "name": "Послуги",
-                "active": True,
-                "keywords": ["послуг", "ремонт", "обслуговуван", "консультац", 
-                           "проектуван", "будівництв", "транспорт", "логіст"],
-                "regex_patterns": [r"\b(послуг|ремонт|консультац)\w*\b"],
-                "parent_category": None,
-                "subcategories": [],
-                "competition_level": "high"
-            },
-            "communication": {
-                "id": "communication", 
-                "name": "Расходы на связь, канали даних, інтернет",
-                "active": True,
-                "keywords": ["зв'язок", "інтернет", "телефон", "мобільн", "канал", 
-                           "передач", "даних", "хостинг", "домен", "wifi", "ethernet"],
-                "regex_patterns": [r"\b(зв'язок|інтернет|телефон)\w*\b"],
-                "parent_category": None,
-                "subcategories": [],
-                "competition_level": "medium"
-            }
-        }
     
 
     def load_category_mappings(self, mapping_file: str = "data/categories_map.json"):
@@ -246,8 +141,7 @@ class CategoryManager:
         """
         try:
             if not Path(filepath).exists():
-                self.logger.warning(f"Файл категорій {filepath} не знайдено. Використовуються базові категорії")
-                self.categories = self.base_categories.copy()
+                self.logger.warning(f"Файл категорій {filepath} не знайдено. Використовуються базові категорії")                
                 self._compile_patterns()
                 return False
             
@@ -290,7 +184,7 @@ class CategoryManager:
                         continue
             
             # Об'єднання з базовими категоріями
-            self.categories = {**self.base_categories, **loaded_categories}
+            self.categories = loaded_categories
             self._compile_patterns()
             
             self.logger.info(f"✅ Завантажено {len(loaded_categories)} категорій з файлу")
@@ -300,7 +194,6 @@ class CategoryManager:
             
         except Exception as e:
             self.logger.error(f"❌ Помилка завантаження категорій: {e}")
-            self.categories = self.base_categories.copy()
             self._compile_patterns()
             return False
     
