@@ -759,10 +759,9 @@
             </div>
 
             <!-- Prediction Context Card -->
-            <div class="result-card" id="predictionContextCard" style="display: none;"> {/* Initially hidden */}
+            <div class="result-card" id="predictionContextCard" style="display: none;"> 
                 <h3><i class="fas fa-info-circle"></i> Деталі прогнозу</h3>
                 <div id="predictionContextInfo">
-                    {/* Dynamic content will be added here by JavaScript */}
                 </div>
             </div>
             
@@ -918,7 +917,7 @@
                }
 
                // Fetch categories_map.json for cluster and category counts
-               const categoriesResponse = await fetch('/static/data/categories_map.json'); // Updated URL
+               const categoriesResponse = await fetch('/static/categories_map.json'); // Updated URL
                if (categoriesResponse.ok) {
                    const categoriesData = await categoriesResponse.json();
 

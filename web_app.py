@@ -172,13 +172,7 @@ def predict():
             "F_ITEMNAME": data['item_name'],
             "F_TENDERNAME": data['tender_name'],
             "F_INDUSTRYNAME": data['industry_name']
-        }
-        
-        # Додаткові поля якщо є
-        if data.get('cpv'):
-            test_tender['CPV'] = data['cpv']
-        if data.get('budget'):
-            test_tender['ITEM_BUDGET'] = float(data['budget'])
+        }              
         
         # Отримання профілю постачальника
         supplier_profile = None
@@ -221,7 +215,6 @@ def predict():
                 except:
                     pass
             
-            # І далі в response додати:
             response = {
                 'success': True,
                 'prediction': {
@@ -229,7 +222,6 @@ def predict():
                     'risk_factors': result.get('risk_factors', [])
                 },
                 'supplier_info': {
-                    # ... існуючі поля ...
                 },
                 'cluster_info': cluster_info,  # НОВЕ
                 'competitive_context': competitive_context,  # НОВЕ                
