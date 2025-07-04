@@ -283,8 +283,7 @@ def create_or_update_profiles(system):
     
     # Перевіряємо наявність існуючих профілів
     existing_profiles = [
-        'supplier_profiles_with_clusters.json',
-        'supplier_profiles_COMPLETE.json'
+        'supplier_profiles_with_clusters.json'
     ]
     
     profiles_exist = any(Path(f).exists() for f in existing_profiles)
@@ -295,7 +294,7 @@ def create_or_update_profiles(system):
         
         if response.lower() == 'u':
             # Запускаємо оновлення
-            from update_with_clusters import update_profiles_with_clusters_and_competitors
+            from update_profiles_clusters import update_profiles_with_clusters_and_competitors
             update_profiles_with_clusters_and_competitors()
             return
     
@@ -327,8 +326,6 @@ if __name__ == "__main__":
         categories_file="categories.jsonl",
         qdrant_host="localhost",
         qdrant_port=6333
-    )
-    system.initialize_system()
-    
+    )    
     # Створення або оновлення профілів
     create_or_update_profiles(system)

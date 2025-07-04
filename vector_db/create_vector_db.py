@@ -171,8 +171,6 @@ def create_optimized_vector_database(
     categories_file: str = "categories.jsonl",
     collection_name: str = "tender_vectors",
     batch_size: int = 5000,
-    max_records: int = None,
-    monitor_interval: int = 50000,
     update_mode: bool = None,
     force_recreate: bool = False,
     fast_mode: bool = True

@@ -64,7 +64,6 @@ def enable_indexing_with_timeout(collection_name: str = "tender_vectors",
     
     # Запит підтвердження
     print(f"\n🤔 Увімкнути індексацію для {points_count:,} записів?")
-    print("⏱️  Це може зайняти 1-3 години для 30GB")
     response = input("Продовжити? (y/n): ")
     
     if response.lower() != 'y':

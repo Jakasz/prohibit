@@ -7,311 +7,943 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
+        /* Використовуємо ті самі змінні кольорів, що й на головній сторінці */
         :root {
-            --primary-color: #2c3e50;
-            --secondary-color: #3498db;
-            --success-color: #27ae60;
-            --danger-color: #e74c3c;
-            --warning-color: #f39c12;
-            --bg-light: #f8f9fa;
-            --text-primary: #333;
-            --text-secondary: #6c757d;
+            --primary-light: #06d6a0;
+            --secondary-light: #f8ffe5;
+            --text-light: #1a1a2e;
+            --text-secondary-light: #16213e;
+            --border-light: #06d6a0;
+            --shadow-light: rgba(6, 214, 160, 0.2);
+            
+            --primary-dark: #928dab;
+            --secondary-dark: #1f1c2c;
+            --text-dark: #f8ffe5;
+            --text-secondary-dark: #7780aa;
+            --border-dark: #928dab;
+            --shadow-dark: rgba(146, 141, 171, 0.2);
+        }
+        
+        [data-theme="light"] {
+            --primary-color: var(--primary-light);
+            --secondary-color: var(--secondary-light);
+            --text-primary: var(--text-light);
+            --text-secondary: var(--text-secondary-light);
+            --bg-primary: var(--secondary-light);
+            --bg-secondary: #ffffff;
+            --border-color: var(--border-light);
+            --shadow-color: var(--shadow-light);
+            --card-bg: #ffffff;
+            --input-bg: #ffffff;
+            --drawer-bg: #ffffff;
+        }
+        
+        [data-theme="dark"] {
+            --primary-color: var(--primary-dark);
+            --secondary-color: var(--secondary-dark);
+            --text-primary: var(--text-dark);
+            --text-secondary: var(--text-secondary-dark);
+            --bg-primary: var(--secondary-dark);
+            --bg-secondary: #2a2a3e;
+            --border-color: var(--border-dark);
+            --shadow-color: var(--shadow-dark);
+            --card-bg: #2a2a3e;
+            --input-bg: #3a3a4e;
+            --drawer-bg: #2a2a3e;
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
         }
         
         body {
-            background-color: var(--bg-light);
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            transition: all 0.3s ease;
+            min-height: 100vh;
+            overflow-x: hidden;
         }
         
-        .navbar {
-            background-color: var(--primary-color);
-            box-shadow: 0 2px 4px rgba(0,0,0,.1);
+        /* Navigation Drawer - як на головній */
+        .nav-drawer {
+            position: fixed;
+            top: 0;
+            left: -280px;
+            width: 280px;
+            height: 100vh;
+            background: var(--drawer-bg);
+            box-shadow: 2px 0 20px rgba(0, 0, 0, 0.1);
+            transition: left 0.3s ease;
+            z-index: 1050;
+            display: flex;
+            flex-direction: column;
         }
         
-        .navbar-brand, .navbar-nav .nav-link {
-            color: white !important;
+        .nav-drawer.active {
+            left: 0;
         }
         
-        .navbar-nav .nav-link:hover {
-            color: var(--secondary-color) !important;
+        .drawer-header {
+            padding: 2rem 1.5rem;
+            background: var(--primary-color);
+            color: var(--bg-secondary);
         }
         
-        .main-container {
-            margin-top: 20px;
-            margin-bottom: 40px;
-        }
-        
-        .stats-card {
-            background: white;
-            border-radius: 10px;
-            padding: 20px;
-            box-shadow: 0 2px 10px rgba(0,0,0,.08);
-            margin-bottom: 20px;
-            transition: transform 0.2s;
-        }
-        
-        .stats-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 20px rgba(0,0,0,.12);
-        }
-        
-        .stats-number {
-            font-size: 2rem;
+        .drawer-header h3 {
+            margin: 0;
+            font-size: 1.4rem;
             font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .drawer-nav {
+            flex: 1;
+            padding: 1.5rem 0;
+            overflow-y: auto;
+        }
+        
+        .drawer-nav-item {
+            display: flex;
+            align-items: center;
+            padding: 1rem 1.5rem;
+            color: var(--text-primary);
+            text-decoration: none;
+            transition: all 0.3s ease;
+            border-left: 4px solid transparent;
+            margin-bottom: 0.25rem;
+        }
+        
+        .drawer-nav-item:hover {
+            background: var(--shadow-color);
+            border-left-color: var(--primary-color);
             color: var(--primary-color);
         }
         
-        .stats-label {
+        .drawer-nav-item.active {
+            background: var(--shadow-color);
+            border-left-color: var(--primary-color);
+            color: var(--primary-color);
+            font-weight: 600;
+        }
+        
+        .drawer-nav-item i {
+            width: 24px;
+            margin-right: 1rem;
+            font-size: 1.1rem;
+        }
+        
+        .drawer-footer {
+            padding: 1.5rem;
+            border-top: 1px solid var(--border-color);
+            opacity: 0.8;
+        }
+        
+        .drawer-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: none;
+            z-index: 1040;
+        }
+        
+        .drawer-overlay.active {
+            display: block;
+        }
+        
+        /* Top Bar - як на головній */
+        .top-bar {
+            background: var(--card-bg);
+            padding: 1rem 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 2px 10px var(--shadow-color);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+        
+        .menu-toggle {
+            background: none;
+            border: none;
+            color: var(--text-primary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.5rem;
+            border-radius: 8px;
+            transition: all 0.3s ease;
+        }
+        
+        .menu-toggle:hover {
+            background: var(--shadow-color);
+            color: var(--primary-color);
+        }
+        
+        .theme-toggle {
+            background: var(--primary-color);
+            border: none;
+            color: var(--bg-secondary);
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 500;
+        }
+        
+        .theme-toggle:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px var(--shadow-color);
+        }
+
+        .lang-toggle {
+        background: transparent;
+        border: 2px solid var(--primary-color);
+        color: var(--primary-color);
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-weight: 500;
+        margin-left: 1rem;
+        }
+
+        .lang-toggle:hover {
+            background: var(--primary-color);
+            color: var(--bg-secondary);
+        }
+
+    
+        
+        /* Main Content */
+        .main-content {
+            padding: 2rem 1rem;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .page-header {
+            text-align: center;
+            padding: 2rem 0 3rem;
+        }
+        
+        .page-header h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: var(--text-primary);
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, var(--primary-color), var(--text-primary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .page-header p {
+            font-size: 1.25rem;
             color: var(--text-secondary);
-            font-size: 0.9rem;
+            max-width: 600px;
+            margin: 0 auto;
         }
         
-        .search-section {
-            background: white;
-            border-radius: 10px;
-            padding: 25px;
-            box-shadow: 0 2px 10px rgba(0,0,0,.08);
-            margin-bottom: 30px;
+        /* Statistics Cards - той самий стиль */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 3rem;
         }
         
-        .table-container {
-            background: white;
-            border-radius: 10px;
-            padding: 25px;
-            box-shadow: 0 2px 10px rgba(0,0,0,.08);
+        .stat-card {
+            background: var(--card-bg);
+            padding: 2rem;
+            border-radius: 16px;
+            box-shadow: 0 4px 20px var(--shadow-color);
+            text-align: center;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--primary-color);
+            box-shadow: 0 8px 30px var(--shadow-color);
+        }
+        
+        .stat-icon {
+            width: 60px;
+            height: 60px;
+            background: var(--primary-color);
+            color: var(--bg-secondary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            margin: 0 auto 1rem;
+        }
+        
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: var(--primary-color);
+            margin-bottom: 0.5rem;
+        }
+        
+        .stat-label {
+            font-size: 1rem;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+        
+        /* Search Section */
+        .search-card {
+            background: var(--card-bg);
+            padding: 2.5rem;
+            border-radius: 20px;
+            box-shadow: 0 6px 30px var(--shadow-color);
+            margin-bottom: 2rem;
+        }
+        
+        .search-header {
+            margin-bottom: 2rem;
+        }
+        
+        .search-header h2 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+        }
+        
+        .search-header p {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+        }
+        
+        .form-control, .form-select {
+            padding: 0.875rem 1.25rem;
+            border: 2px solid var(--border-color);
+            border-radius: 12px;
+            background: var(--input-bg);
+            color: var(--text-primary);
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+        
+        .form-control:focus, .form-select:focus {
+            outline: none;
+            border-color: var(--primary-color);
+            box-shadow: 0 0 0 4px var(--shadow-color);
+        }
+        .form-control::placeholder {
+            color: var(--text-secondary);
+            opacity: 0.7;
+        }
+
+        [data-theme="dark"] .form-control::placeholder {
+            color: var(--text-secondary-dark);
+            opacity: 0.6;
+        }
+
+
+        
+        /* Table Styles */
+        .table-card {
+            background: var(--card-bg);
+            border-radius: 20px;
+            padding: 2rem;
+            box-shadow: 0 6px 30px var(--shadow-color);
+            overflow-x: auto;
+        }
+        
+        .table-responsive {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+        }
+        
+        .table {
+            color: var(--text-primary);
+            width: 100%;
+            table-layout: auto; /* Змінено на auto для гнучкості */
+            min-width: 1000px;
         }
         
         .table th {
-            background-color: var(--bg-light);
-            border-bottom: 2px solid #dee2e6;
+            background-color: transparent;
+            border-bottom: 2px solid var(--border-color);
+            color: var(--text-primary);
+            font-weight: 600;
             cursor: pointer;
             user-select: none;
+            padding: 1rem 0.5rem;
+            text-align: left;
             white-space: nowrap;
         }
         
         .table th:hover {
-            background-color: #e9ecef;
+            color: var(--primary-color);
         }
         
         .table th i {
-            margin-left: 5px;
+            margin-left: 0.5rem;
             font-size: 0.8rem;
             color: var(--text-secondary);
         }
         
-        .market-position-badge {
-            padding: 4px 12px;
-            border-radius: 20px;
-            font-size: 0.85rem;
-            font-weight: 500;
+        .table td {
+            padding: 0.75rem 0.5rem;
+            vertical-align: middle;
+            border-color: var(--border-color);
         }
         
-        .position-established {
-            background-color: #d4edda;
-            color: #155724;
-        }
-        
-        .position-competitive {
-            background-color: #cce5ff;
-            color: #004085;
-        }
-        
-        .position-active {
-            background-color: #fff3cd;
-            color: #856404;
-        }
-        
-        .position-emerging {
-            background-color: #f8d7da;
-            color: #721c24;
-        }
-        
-        .position-new {
-            background-color: #e2e3e5;
-            color: #383d41;
-        }
-        
-        .win-rate {
+        /* Специфічні стилі для кожної колонки */
+        .table td:nth-child(1) { 
+            width: 100px;
             font-weight: 600;
         }
         
-        .win-rate-high { color: var(--success-color); }
-        .win-rate-medium { color: var(--warning-color); }
-        .win-rate-low { color: var(--danger-color); }
+        .table td:nth-child(2) { 
+            max-width: 200px;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+        
+        .table td:nth-child(3),
+        .table td:nth-child(4),
+        .table td:nth-child(6) { 
+            width: 80px;
+            text-align: center;
+        }
+        
+        .table td:nth-child(5) { 
+            width: 140px;
+        }
+        
+        .table td:nth-child(7) { 
+            min-width: 200px;
+            max-width: 280px;
+        }
+        
+        .table td:nth-child(8) { 
+            width: 120px;
+            text-align: center;
+        }
+        
+        .table tbody tr {
+            transition: all 0.2s ease;
+        }
+        
+        .table tbody tr:hover {
+            background: var(--shadow-color);
+        }
+        [data-theme="dark"] .table tbody tr {
+        background: var(--card-bg);
+        }
+
+        [data-theme="dark"] .table tbody tr:hover {
+            background: var(--shadow-color);
+        }
+        
+        /* Badges and Tags */
+        .market-position-badge {
+            padding: 0.3rem 0.6rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            display: inline-block;
+            white-space: nowrap;
+            max-width: 100%;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .position-established {
+            background: #27ae60;
+            color: #ffffff;
+        }
+        
+        .position-competitive {
+            background: #3498db;
+            color: #ffffff;
+        }
+        
+        .position-active {
+            background: #f39c12;
+            color: #ffffff;
+        }
+        
+        .position-emerging {
+            background: #e74c3c;
+            color: #ffffff;
+        }
+        
+        .position-new {
+            background: #7f8c8d;
+            color: #ffffff;
+        }
+        
+        .win-rate {
+            font-weight: 700;
+            font-size: 1rem;
+        }
+        
+        .win-rate-high { color: #27ae60; }
+        .win-rate-medium { color: #f39c12; }
+        .win-rate-low { color: #e74c3c; }
+        
+        /* Category and Cluster Display */
+        .category-info {
+            display: flex;
+            flex-direction: column;
+            gap: 0.3rem;
+            width: 100%;
+        }
+        
+        .category-name {
+            font-weight: 500;
+            color: var(--text-primary);
+            font-size: 0.85rem;
+            line-height: 1.4;
+            word-break: break-word;
+            overflow-wrap: break-word;
+            hyphens: auto;
+            display: block;
+            width: 100%;
+            max-width: 100%;
+        }
+        [data-theme="dark"] .category-name {
+            color: #0d556b;
+        }
+
+
+        
+        .cluster-badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            background: var(--primary-color);
+            color: #ffffff;
+            border-radius: 8px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            line-height: 1.3;
+            word-break: break-word;
+            overflow-wrap: break-word;
+            hyphens: auto;
+            max-width: 100%;
+            white-space: normal;
+            text-align: left;
+        }
+        
+        .cluster-badge i {
+            font-size: 0.65rem;
+            margin-right: 0.3rem;
+            vertical-align: middle;
+        }
+        
+        .cluster-badge i {
+            font-size: 0.65rem;
+        }
         
         .btn-view-profile {
-            padding: 4px 16px;
+            padding: 0.4rem 0.8rem;
+            background: var(--primary-color);
+            color: #ffffff;
+            border: none;
+            border-radius: 10px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            white-space: nowrap;
+        }
+        
+        .btn-view-profile i {
             font-size: 0.9rem;
         }
         
+        .btn-view-profile:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px var(--shadow-color);
+            opacity: 0.9;
+        }
+        
+        /* Loading States */
         .loading-spinner {
             text-align: center;
-            padding: 40px;
+            padding: 4rem;
+            color: var(--text-secondary);
+        }
+        
+        .loading-spinner .spinner-border {
+            width: 3rem;
+            height: 3rem;
+            border-width: 0.3rem;
+            color: var(--primary-color);
         }
         
         .no-data {
             text-align: center;
-            padding: 60px 20px;
+            padding: 4rem 2rem;
             color: var(--text-secondary);
         }
         
         .no-data i {
             font-size: 4rem;
-            margin-bottom: 20px;
+            margin-bottom: 1.5rem;
             opacity: 0.5;
+            color: var(--primary-color);
         }
         
-        /* Modal styles */
+        /* Modal Styles */
+        .modal-content {
+            background: var(--card-bg);
+            color: var(--text-primary);
+            border: none;
+            border-radius: 20px;
+        }
+        
         .modal-header {
-            background-color: var(--bg-light);
-            border-bottom: 2px solid #dee2e6;
+            background: var(--bg-primary);
+            border-bottom: 2px solid var(--border-color);
+            border-radius: 20px 20px 0 0;
+        }
+        
+        .modal-body {
+            padding: 2rem;
         }
         
         .profile-section {
-            margin-bottom: 30px;
+            margin-bottom: 2rem;
+            padding: 1.5rem;
+            background: var(--bg-primary);
+            border-radius: 12px;
         }
         
         .profile-section h6 {
             color: var(--primary-color);
-            font-weight: 600;
-            margin-bottom: 15px;
-            padding-bottom: 8px;
-            border-bottom: 2px solid var(--secondary-color);
+            font-weight: 700;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
         }
         
         .metric-row {
             display: flex;
             justify-content: space-between;
-            padding: 8px 0;
-            border-bottom: 1px solid #f0f0f0;
+            align-items: center;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .metric-row:last-child {
+            border-bottom: none;
         }
         
         .metric-label {
             color: var(--text-secondary);
+            font-weight: 500;
         }
         
         .metric-value {
-            font-weight: 600;
+            font-weight: 700;
             color: var(--text-primary);
+            font-size: 1.1rem;
         }
         
         .category-item {
-            background: var(--bg-light);
-            border-radius: 8px;
-            padding: 12px;
-            margin-bottom: 10px;
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            transition: all 0.3s ease;
         }
         
-        .risk-indicator {
-            padding: 8px 16px;
-            border-radius: 8px;
-            margin-bottom: 10px;
+        .category-item:hover {
+            border-color: var(--primary-color);
+            box-shadow: 0 4px 12px var(--shadow-color);
         }
         
-        .risk-low {
-            background-color: #d4edda;
-            color: #155724;
+        .category-stats {
+            font-size: 0.875rem;
+            color: var(--text-primary);
+            font-weight: 500;
         }
         
-        .risk-medium {
-            background-color: #fff3cd;
-            color: #856404;
+        .category-stats span {
+            color: var(--text-primary);
         }
         
-        .risk-high {
-            background-color: #f8d7da;
-            color: #721c24;
-        }
-        
+        /* Pagination */
         .pagination {
-            margin-top: 20px;
+            margin-top: 2rem;
+            gap: 0.5rem;
         }
         
-        @media (max-width: 768px) {
-            .stats-card {
-                margin-bottom: 15px;
+        .page-link {
+            background: var(--card-bg);
+            color: var(--text-primary);
+            border: 2px solid var(--border-color);
+            border-radius: 8px;
+            padding: 0.5rem 0.75rem;
+            transition: all 0.3s ease;
+        }
+        
+        .page-link:hover {
+            background: var(--primary-color);
+            color: var(--bg-secondary);
+            border-color: var(--primary-color);
+        }
+        
+        .page-item.active .page-link {
+            background: var(--primary-color);
+            color: var(--bg-secondary);
+            border-color: var(--primary-color);
+        }
+        
+        .page-item.disabled .page-link {
+            background: var(--bg-primary);
+            color: var(--text-secondary);
+            border-color: var(--border-color);
+            opacity: 0.5;
+        }
+        
+        /* Responsive */
+        @media (max-width: 1400px) {
+            .table {
+                font-size: 0.95rem;
             }
             
-            .table-responsive {
+            .table th, .table td {
+                padding: 0.8rem 0.5rem;
+            }
+            
+            .category-name {
+                font-size: 0.85rem;
+            }
+            
+            .cluster-badge {
+                font-size: 0.7rem;
+                padding: 0.25rem 0.5rem;
+            }
+        }
+        
+        @media (max-width: 1200px) {
+            .table-card {
+                padding: 1rem;
+            }
+            
+            .table {
                 font-size: 0.9rem;
             }
             
+            .market-position-badge {
+                font-size: 0.75rem;
+                padding: 0.3rem 0.6rem;
+            }
+        }
+        
+        @media (max-width: 992px) {
+            /* Приховуємо деякі колонки на планшетах */
+            .table th:nth-child(6),
+            .table td:nth-child(6) {
+                display: none;
+            }
+            
+            /* Перерозподіляємо ширини */
+            .table th:nth-child(1), 
+            .table td:nth-child(1) { width: 15%; }
+            
+            .table th:nth-child(2), 
+            .table td:nth-child(2) { width: 25%; }
+            
+            .table th:nth-child(7), 
+            .table td:nth-child(7) { width: 25%; }
+        }
+        
+        @media (max-width: 768px) {
+            .page-header h1 {
+                font-size: 2rem;
+            }
+            
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .search-card {
+                padding: 1.5rem;
+            }
+            
+            /* Мобільний вигляд таблиці */
+            .table-responsive {
+                margin: -1rem;
+            }
+            
+            .table {
+                font-size: 0.85rem;
+            }
+            
+            /* Приховуємо ще більше колонок */
+            .table th:nth-child(3),
+            .table td:nth-child(3),
+            .table th:nth-child(5),
+            .table td:nth-child(5) {
+                display: none;
+            }
+            
+            /* Адаптуємо ширини для мобільних */
+            .table th:nth-child(1), 
+            .table td:nth-child(1) { width: 20%; }
+            
+            .table th:nth-child(2), 
+            .table td:nth-child(2) { width: 30%; }
+            
+            .table th:nth-child(4), 
+            .table td:nth-child(4) { width: 15%; }
+            
+            .table th:nth-child(7), 
+            .table td:nth-child(7) { width: 25%; }
+            
+            .table th:nth-child(8), 
+            .table td:nth-child(8) { width: 10%; }
+            
             .btn-view-profile {
-                padding: 2px 8px;
-                font-size: 0.8rem;
+                padding: 0.3rem 0.5rem;
+                font-size: 0.75rem;
+            }
+            
+            .btn-view-profile span {
+                display: none;
+            }
+            
+            .nav-drawer {
+                width: 100%;
+                left: -100%;
             }
         }
     </style>
 </head>
 <body>
-    <!-- Navigation -->
-    <nav class="navbar navbar-expand-lg navbar-dark">
-        <div class="container">
-            <a class="navbar-brand" href="/">
-                <i class="fas fa-chart-line"></i> Система прогнозування тендерів
+    <!-- Navigation Drawer -->
+    <div class="nav-drawer" id="navDrawer">
+        <div class="drawer-header">
+            <h3><i class="fas fa-chart-line"></i> Tender AI</h3>
+        </div>
+        <nav class="drawer-nav">
+            <a href="/" class="drawer-nav-item">
+                <i class="fas fa-home"></i>
+                <span>Головна</span>
             </a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link" href="/">
-                            <i class="fas fa-home"></i> Головна
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link active" href="/profiles">
-                            <i class="fas fa-users"></i> Профілі
-                        </a>
-                    </li>
-                </ul>
-            </div>
+            <a href="/profiles" class="drawer-nav-item active">
+                <i class="fas fa-users"></i>
+                <span>Профілі постачальників</span>
+            </a>
+            <a href="/statistics" class="drawer-nav-item">
+                <i class="fas fa-chart-bar"></i>
+                <span>Статистика системи</span>
+            </a>
+            <a href="#" class="drawer-nav-item" onclick="showAbout(); return false;">
+                <i class="fas fa-info-circle"></i>
+                <span>Про систему</span>
+            </a>
+        </nav>
+        <div class="drawer-footer">
+            <small>&copy; 2025 Tender AI System</small>
         </div>
-    </nav>
+    </div>
+    
+    <div class="drawer-overlay" id="drawerOverlay"></div>
+    
+    <!-- Top Bar -->
+    <div class="top-bar">
+        <button class="menu-toggle" id="menuToggle">
+            <i class="fas fa-bars"></i>
+        </button>
+        <button class="theme-toggle" id="themeToggle">
+            <i class="fas fa-moon" id="themeIcon"></i>
+            <span id="themeText">Темна тема</span>
+        </button>
+        <button class="lang-toggle" id="langToggle">
+        <i class="fas fa-language"></i>
+        <span id="langText">EN</span>
+</button>
 
-    <div class="container main-container">
-        <!-- Statistics Cards -->
-         <div class="row" id="statsContainer">
-            <div class="col-md-3 col-sm-6">
-                <div class="stats-card">
-                    <div class="stats-number" id="totalSuppliers">-</div>
-                    <div class="stats-label">Всього постачальників</div>
-                </div>
-            </div>
-            <div class="col-md-3 col-sm-6">
-                <div class="stats-card">
-                    <div class="stats-number" id="totalCategories">-</div>
-                    <div class="stats-label">Кількість категорій</div>
-                </div>
-            </div>
-            <div class="col-md-3 col-sm-6">
-                <div class="stats-card">
-                    <div class="stats-number" id="totalClusters">-</div>
-                    <div class="stats-label">Кількість кластерів</div>
-                </div>
-            </div>
-            <div class="col-md-3 col-sm-6">
-                <div class="stats-card">
-                    <div class="stats-number">01.01.23 - 01.05.25</div>
-                    <div class="stats-label">Період даних</div>
-                </div>
-            </div>
+
+    </div>
+
+    <div class="main-content">
+        <!-- Page Header -->
+        <div class="page-header">
+            <h1>Профілі постачальників</h1>
+            <p>Аналізуйте детальну інформацію про постачальників та їх показники ефективності</p>
         </div>
+        
+        <!-- Statistics Cards
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-users"></i>
+                </div>
+                <div class="stat-value" id="totalSuppliers">-</div>
+                <div class="stat-label">Всього постачальників</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-percentage"></i>
+                </div>
+                <div class="stat-value" id="avgWinRate">-</div>
+                <div class="stat-label">Середній Win Rate</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-file-contract"></i>
+                </div>
+                <div class="stat-value" id="totalTenders">-</div>
+                <div class="stat-label">Всього тендерів</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">
+                    <i class="fas fa-trophy"></i>
+                </div>
+                <div class="stat-value" id="overallWinRate">-</div>
+                <div class="stat-label">Загальний Win Rate</div>
+            </div>
+        </div> -->
 
         <!-- Search Section -->
-        <div class="search-section">
-            <h4 class="mb-4"><i class="fas fa-search"></i> Пошук постачальників</h4>
-            <div class="row">
+        <div class="search-card">
+            <div class="search-header">
+                <h2><i class="fas fa-search"></i> Пошук постачальників</h2>
+                <p>Знайдіть постачальника за кодом ЄДРПОУ або назвою</p>
+            </div>
+            
+            <div class="row g-3">
                 <div class="col-md-6">
                     <div class="input-group">
-                        <span class="input-group-text">
-                            <i class="fas fa-search"></i>
+                        <span class="input-group-text" style="background: var(--input-bg); border-color: var(--border-color);">
+                            <i class="fas fa-search" style="color: var(--primary-color);"></i>
                         </span>
                         <input type="text" 
                                class="form-control" 
-                               id="searchInput" 
-                               placeholder="Пошук за ЄДРПОУ або назвою..."
+                               id="searchInput"                                
+                               placeholder="Введіть ЄДРПОУ або назву компанії..."
                                autocomplete="off">
                     </div>
                 </div>
@@ -326,38 +958,38 @@
                 </div>
                 <div class="col-md-3">
                     <select class="form-select" id="sortOrder">
-                        <option value="desc">За спаданням</option>
-                        <option value="asc">За зростанням</option>
+                        <option value="desc">За спаданням ↓</option>
+                        <option value="asc">За зростанням ↑</option>
                     </select>
                 </div>
             </div>
         </div>
 
         <!-- Table Container -->
-        <div class="table-container">
+        <div class="table-card">
             <div id="loadingSpinner" class="loading-spinner" style="display: none;">
-                <div class="spinner-border text-primary" role="status">
+                <div class="spinner-border" role="status">
                     <span class="visually-hidden">Завантаження...</span>
                 </div>
-                <p class="mt-3">Завантаження профілів...</p>
+                <p class="mt-3">Завантаження профілів постачальників...</p>
             </div>
 
             <div id="noDataMessage" class="no-data" style="display: none;">
                 <i class="fas fa-inbox"></i>
                 <h5>Профілі не знайдено</h5>
-                <p>Спробуйте змінити параметри пошуку</p>
+                <p>Спробуйте змінити параметри пошуку або перевірте з'єднання</p>
             </div>
 
             <div id="tableWrapper" style="display: none;">
                 <div class="table-responsive">
-                    <table class="table table-hover">
+                    <table class="table">
                         <thead>
                             <tr>
                                 <th onclick="changeSort('edrpou')">
                                     ЄДРПОУ <i class="fas fa-sort"></i>
                                 </th>
                                 <th onclick="changeSort('name')">
-                                    Назва <i class="fas fa-sort"></i>
+                                    Назва компанії <i class="fas fa-sort"></i>
                                 </th>
                                 <th onclick="changeSort('total_tenders')">
                                     Тендери <i class="fas fa-sort"></i>
@@ -412,11 +1044,191 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        const translations = {
+    uk: {
+        pageTitle: 'Профілі постачальників',
+        pageSubtitle: 'Аналізуйте детальну інформацію про постачальників та їх показники ефективності',           
+        searchSubtitle: 'Знайдіть постачальника за кодом ЄДРПОУ або назвою',
+        searchPlaceholder: 'Введіть ЄДРПОУ або назву компанії...',
+        sortByWinRate: 'За Win Rate',
+        sortByTenders: 'За кількістю тендерів',
+        sortByReliability: 'За надійністю',
+        sortByName: 'За назвою',
+        sortByEdrpou: 'За ЄДРПОУ',
+        sortDesc: 'За спаданням ↓',
+        sortAsc: 'За зростанням ↑',
+        thEdrpou: 'ЄДРПОУ',
+        thName: 'Назва компанії',
+        thTenders: 'Тендери',
+        thWinRate: 'Win Rate',
+        thPosition: 'Позиція',
+        thReliability: 'Надійність',
+        thCategory: 'Основна категорія',
+        thActions: 'Дії',
+        btnView: 'Переглянути',
+        loading: 'Завантаження профілів постачальників...',
+        noData: 'Профілі не знайдено',
+        noDataDesc: 'Спробуйте змінити параметри пошуку або перевірте з\'єднання',
+        modalTitle: 'Детальний профіль постачальника',
+        mainMetrics: 'Основні показники',
+        marketPosition: 'Позиція на ринку:',
+        totalTendersLabel: 'Загальна кількість тендерів:',
+        wonTenders: 'Виграно тендерів:',
+        totalPositions: 'Всього позицій:',
+        wonPositions: 'Виграно позицій:',
+        performanceMetrics: 'Показники ефективності',
+        winRateTenders: 'Win Rate (тендери):',
+        winRatePositions: 'Win Rate (позиції):',
+        recentWinRate: 'Недавній Win Rate:',
+        growthRate: 'Темп зростання:',
+        qualityMetrics: 'Показники якості',
+        reliabilityLevel: 'Рівень надійності:',
+        stability: 'Стабільність:',
+        specialization: 'Спеціалізація:',
+        competitionResistance: 'Стійкість до конкуренції:',
+        topCategories: 'Топ категорії та кластери',
+        positions: 'Позицій:',
+        won: 'Виграно:',
+        competitiveAdvantages: 'Конкурентні переваги',
+        weaknesses: 'Слабкі сторони',
+        activityClusters: 'Кластери діяльності',
+        topCompetitors: 'Топ конкуренти',
+        compName: 'Назва',
+        profileVersion: 'Версія профілю:',
+        lastUpdate: 'Останнє оновлення:',
+        loadingProfile: 'Завантаження профілю...',
+        errorLoading: 'Помилка завантаження профілю'
+
+    },
+    en: {
+        pageTitle: 'Supplier Profiles',
+        pageSubtitle: 'Analyze detailed information about suppliers and their performance indicators',        
+        searchTitle: 'Search Suppliers',
+        searchSubtitle: 'Find supplier by EDRPOU code or name',
+        searchPlaceholder: 'Enter EDRPOU or company name...',
+        sortByWinRate: 'By Win Rate',
+        sortByTenders: 'By Tender Count',
+        sortByReliability: 'By Reliability',
+        sortByName: 'By Name',
+        sortByEdrpou: 'By EDRPOU',
+        sortDesc: 'Descending ↓',
+        sortAsc: 'Ascending ↑',
+        thEdrpou: 'EDRPOU',
+        thName: 'Company Name',
+        thTenders: 'Tenders',
+        thWinRate: 'Win Rate',
+        thPosition: 'Position',
+        thReliability: 'Reliability',
+        thCategory: 'Main Category',
+        thActions: 'Actions',
+        btnView: 'View',
+        loading: 'Loading supplier profiles...',
+        noData: 'No profiles found',
+        noDataDesc: 'Try changing search parameters or check your connection',
+        modalTitle: 'Detailed Supplier Profile',
+        mainMetrics: 'Main Metrics',
+        marketPosition: 'Market Position:',
+        totalTendersLabel: 'Total Tenders:',
+        wonTenders: 'Won Tenders:',
+        totalPositions: 'Total Positions:',
+        wonPositions: 'Won Positions:',
+        performanceMetrics: 'Performance Metrics',
+        winRateTenders: 'Win Rate (tenders):',
+        winRatePositions: 'Win Rate (positions):',
+        recentWinRate: 'Recent Win Rate:',
+        growthRate: 'Growth Rate:',
+        qualityMetrics: 'Quality Metrics',
+        reliabilityLevel: 'Reliability Level:',
+        stability: 'Stability:',
+        specialization: 'Specialization:',
+        competitionResistance: 'Competition Resistance:',
+        topCategories: 'Top Categories and Clusters',
+        positions: 'Positions:',
+        won: 'Won:',
+        competitiveAdvantages: 'Competitive Advantages',
+        weaknesses: 'Weaknesses',
+        activityClusters: 'Activity Clusters',
+        topCompetitors: 'Top Competitors',
+        compName: 'Name',
+        profileVersion: 'Profile Version:',
+        lastUpdate: 'Last Update:',
+        loadingProfile: 'Loading profile...',
+        errorLoading: 'Error loading profile'
+
+    }
+};
+
+let currentLang = localStorage.getItem('language') || 'uk';
+
+
         // Global variables
         let currentPage = 1;
         let currentSort = 'win_rate';
         let currentOrder = 'desc';
         let searchTimeout = null;
+        let clusterMap = {}; // Для збереження маппінгу категорій на кластери
+        
+        // Theme management (як на головній сторінці)
+        const htmlElement = document.documentElement;
+        const themeToggle = document.getElementById('themeToggle');
+        const themeIcon = document.getElementById('themeIcon');
+        const themeText = document.getElementById('themeText');
+        
+        // Load saved theme
+        const savedTheme = localStorage.getItem('theme') || 'light';
+        htmlElement.setAttribute('data-theme', savedTheme);
+        updateThemeUI(savedTheme);
+        
+        // Theme toggle
+        themeToggle.addEventListener('click', () => {
+            const currentTheme = htmlElement.getAttribute('data-theme');
+            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+            
+            htmlElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateThemeUI(newTheme);
+        });
+        
+        function updateThemeUI(theme) {
+            if (theme === 'dark') {
+                themeIcon.classList.remove('fa-sun');
+                themeIcon.classList.add('fa-moon');
+                themeText.textContent = 'Темна тема';
+            }
+        }
+        
+        // Navigation drawer (як на головній сторінці)
+        const menuToggle = document.getElementById('menuToggle');
+        const navDrawer = document.getElementById('navDrawer');
+        const drawerOverlay = document.getElementById('drawerOverlay');
+        
+        menuToggle.addEventListener('click', () => {
+            navDrawer.classList.add('active');
+            drawerOverlay.classList.add('active');
+        });
+        
+        drawerOverlay.addEventListener('click', () => {
+            navDrawer.classList.remove('active');
+            drawerOverlay.classList.remove('active');
+        });
+        
+        // Show about dialog
+        function showAbout() {
+            navDrawer.classList.remove('active');
+            drawerOverlay.classList.remove('active');
+            
+            alert(`Система прогнозування тендерів v1.0
+            
+Розроблено для аналізу та прогнозування результатів тендерів з використанням машинного навчання.
+
+Основні можливості:
+- Прогнозування ймовірності перемоги в тендерах
+- Аналіз профілів постачальників
+- Статистика по категоріях та кластерах
+- Аналіз конкуренції
+
+Період даних: 01.01.2023 - 01.05.2025`);
+        }
 
         // Format number with thousands separator
         function formatNumber(num) {
@@ -430,6 +1242,24 @@
 
         // Get market position badge
         function getMarketPositionBadge(position) {
+                const labels = {
+                uk: {
+                    'established_player': 'Досвідчений гравець',
+                    'competitive_player': 'Конкурентоспроможний',
+                    'active_participant': 'Активний учасник',
+                    'emerging_player': 'Новий гравець',
+                    'new_entrant': 'Новачок',
+                    'unknown': 'Невизначено'
+                },
+                en: {
+                    'established_player': 'Established Player',
+                    'competitive_player': 'Competitive',
+                    'active_participant': 'Active Participant',
+                    'emerging_player': 'Emerging Player',
+                    'new_entrant': 'New Entrant',
+                    'unknown': 'Unknown'
+                }
+            };
             const badges = {
                 'established_player': '<span class="market-position-badge position-established">Досвідчений гравець</span>',
                 'competitive_player': '<span class="market-position-badge position-competitive">Конкурентоспроможний</span>',
@@ -448,16 +1278,106 @@
             return 'win-rate-low';
         }
 
+        // Load categories map для отримання кластерів
+        async function loadCategoriesMap() {
+            try {
+                const response = await fetch('/static/categories_map.json');
+                if (response.ok) {
+                    const categoriesData = await response.json();
+                    // Створюємо зворотній маппінг: категорія -> кластер
+                    for (const [clusterName, categories] of Object.entries(categoriesData)) {
+                        if (Array.isArray(categories)) {
+                            categories.forEach(category => {
+                                clusterMap[category] = clusterName;
+                            });
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading categories map:', error);
+            }
+        }
+                function updateLanguageUI(lang) {
+            const t = translations[lang];
+            
+            // Оновити тексти
+            document.querySelector('.page-header h1').textContent = t.pageTitle;
+            document.querySelector('.page-header p').textContent = t.pageSubtitle;
+            
+            // Статистика
+            // document.querySelectorAll('.stat-label')[0].textContent = t.totalSuppliers;
+            // document.querySelectorAll('.stat-label')[1].textContent = t.avgWinRate;
+            // document.querySelectorAll('.stat-label')[2].textContent = t.totalTenders;
+            // document.querySelectorAll('.stat-label')[3].textContent = t.overallWinRate;
+            
+            // Пошук
+            document.querySelector('.search-header h2').innerHTML = `<i class="fas fa-search"></i> ${t.searchTitle}`;
+            document.querySelector('.search-header p').textContent = t.searchSubtitle;
+            document.getElementById('searchInput').placeholder = t.searchPlaceholder;
+            
+            // Таблиця
+            const headers = document.querySelectorAll('.table th');
+            headers[0].innerHTML = `${t.thEdrpou} <i class="fas fa-sort"></i>`;
+            headers[1].innerHTML = `${t.thName} <i class="fas fa-sort"></i>`;
+            headers[2].innerHTML = `${t.thTenders} <i class="fas fa-sort"></i>`;
+            headers[3].innerHTML = `${t.thWinRate} <i class="fas fa-sort"></i>`;
+            headers[4].innerHTML = `${t.thPosition} <i class="fas fa-sort"></i>`;
+            headers[5].innerHTML = `${t.thReliability} <i class="fas fa-sort"></i>`;
+            headers[6].innerHTML = `${t.thCategory} <i class="fas fa-sort"></i>`;
+            headers[7].textContent = t.thActions;
+            
+            // Оновити кнопку мови
+            document.getElementById('langText').textContent = lang === 'uk' ? 'EN' : 'UA';
+        }
+
+        // Event listener для перемикача мови
+        document.getElementById('langToggle').addEventListener('click', () => {
+            currentLang = currentLang === 'uk' ? 'en' : 'uk';
+            localStorage.setItem('language', currentLang);
+            updateLanguageUI(currentLang);
+        });
+
+        // Ініціалізація мови при завантаженні
+        updateLanguageUI(currentLang);
+
+
+
+        // Get cluster for category
+        async function getClusterForCategory(categoryName) {
+            // Спробуємо знайти в локальному маппінгу
+            if (clusterMap[categoryName]) {
+                return {
+                    cluster_id: clusterMap[categoryName],
+                    cluster_name: clusterMap[categoryName]
+                };
+            }
+            
+            // Якщо не знайдено, спробуємо через API
+            try {
+                const response = await fetch(`/api/category_analytics/${encodeURIComponent(categoryName)}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.cluster_info) {
+                        return data.cluster_info;
+                    }
+                }
+            } catch (error) {
+                console.error('Error getting cluster info:', error);
+            }
+            
+            return null;
+        }
+
         // Load statistics
         async function loadStatistics() {
             try {
                 const response = await fetch('/api/profiles/statistics');
                 const stats = await response.json();
 
-                document.getElementById('totalSuppliers').textContent = formatNumber(stats.total_suppliers);
-                document.getElementById('avgWinRate').textContent = formatPercent(stats.avg_win_rate);
-                document.getElementById('totalTenders').textContent = formatNumber(stats.total_tenders);
-                document.getElementById('overallWinRate').textContent = formatPercent(stats.overall_win_rate);
+                // document.getElementById('totalSuppliers').textContent = formatNumber(stats.total_suppliers);
+                // document.getElementById('avgWinRate').textContent = formatPercent(stats.avg_win_rate);
+                // document.getElementById('totalTenders').textContent = formatNumber(stats.total_tenders);
+                // document.getElementById('overallWinRate').textContent = formatPercent(stats.overall_win_rate);
             } catch (error) {
                 console.error('Error loading statistics:', error);
             }
@@ -489,7 +1409,7 @@
                 if (data.profiles.length === 0) {
                     document.getElementById('noDataMessage').style.display = 'block';
                 } else {
-                    displayProfiles(data.profiles);
+                    await displayProfiles(data.profiles);
                     displayPagination(data);
                     document.getElementById('tableWrapper').style.display = 'block';
                 }
@@ -501,30 +1421,47 @@
             }
         }
 
-        // Display profiles in table
-        function displayProfiles(profiles) {
+        // Display profiles in table with cluster info
+        async function displayProfiles(profiles) {
             const tbody = document.getElementById('profilesTableBody');
             tbody.innerHTML = '';
 
-            profiles.forEach(profile => {
+            for (const profile of profiles) {
                 const row = document.createElement('tr');
+                
+                // Отримуємо інформацію про кластер для категорії
+                let categoryHtml = `<div class="category-info">
+                    <div class="category-name" title="${profile.main_category}">${profile.main_category}</div>`;
+                
+                const clusterInfo = await getClusterForCategory(profile.main_category);
+                if (clusterInfo && clusterInfo.cluster_name) {
+                    categoryHtml += `
+                        <div class="cluster-badge" title="Кластер: ${clusterInfo.cluster_name}">
+                            <i class="fas fa-cubes"></i><span>${clusterInfo.cluster_name}</span>
+                        </div>`;
+                }
+                
+                categoryHtml += '</div>';
+                
                 row.innerHTML = `
                     <td><strong>${profile.edrpou}</strong></td>
-                    <td>${profile.name}</td>
+                    <td title="${profile.name}">${profile.name}</td>
                     <td>${formatNumber(profile.total_tenders)}</td>
-                    <td class="${getWinRateClass(profile.win_rate)}">${formatPercent(profile.win_rate)}</td>
+                    <td><span class="${getWinRateClass(profile.win_rate)}">${formatPercent(profile.win_rate)}</span></td>
                     <td>${getMarketPositionBadge(profile.market_position)}</td>
                     <td>${formatPercent(profile.reliability_score)}</td>
-                    <td>${profile.main_category}</td>
+                    <td>${categoryHtml}</td>
                     <td>
-                        <button class="btn btn-sm btn-primary btn-view-profile" 
-                                onclick="viewProfile('${profile.edrpou}')">
-                            <i class="fas fa-eye"></i> Переглянути
+                        <button class="btn-view-profile" 
+                                onclick="viewProfile('${profile.edrpou}')"
+                                title="Переглянути детальний профіль">
+                            <i class="fas fa-eye"></i>
+                            <span>Details</span>
                         </button>
                     </td>
                 `;
                 tbody.appendChild(row);
-            });
+            }
         }
 
         // Display pagination
@@ -536,7 +1473,7 @@
             const prevLi = document.createElement('li');
             prevLi.className = `page-item ${data.page === 1 ? 'disabled' : ''}`;
             prevLi.innerHTML = `
-                <a class="page-link" href="#" onclick="changePage(${data.page - 1})">
+                <a class="page-link" href="#" onclick="changePage(${data.page - 1}); return false;">
                     <i class="fas fa-chevron-left"></i>
                 </a>
             `;
@@ -553,7 +1490,7 @@
                 const li = document.createElement('li');
                 li.className = `page-item ${i === currentPage ? 'active' : ''}`;
                 li.innerHTML = `
-                    <a class="page-link" href="#" onclick="changePage(${i})">${i}</a>
+                    <a class="page-link" href="#" onclick="changePage(${i}); return false;">${i}</a>
                 `;
                 pagination.appendChild(li);
             }
@@ -562,337 +1499,317 @@
             const nextLi = document.createElement('li');
             nextLi.className = `page-item ${data.page === totalPages ? 'disabled' : ''}`;
             nextLi.innerHTML = `
-                <a class="page-link" href="#" onclick="changePage(${data.page + 1})">
+                <a class="page-link" href="#" onclick="changePage(${data.page + 1}); return false;">
                     <i class="fas fa-chevron-right"></i>
                 </a>
             `;
             pagination.appendChild(nextLi);
         }
 
-      // Change page
-       function changePage(page) {
-           if (page < 1) return;
-           currentPage = page;
-           loadProfiles();
-       }
+        // Change page
+        function changePage(page) {
+            if (page < 1) return;
+            currentPage = page;
+            loadProfiles();
+        }
 
-       // Change sort
-       function changeSort(sortBy) {
-           if (currentSort === sortBy) {
-               currentOrder = currentOrder === 'asc' ? 'desc' : 'asc';
-           } else {
-               currentSort = sortBy;
-               currentOrder = 'desc';
-           }
-           document.getElementById('sortBy').value = sortBy;
-           document.getElementById('sortOrder').value = currentOrder;
-           currentPage = 1;
-           loadProfiles();
-       }
+        // Change sort
+        function changeSort(sortBy) {
+            if (currentSort === sortBy) {
+                currentOrder = currentOrder === 'asc' ? 'desc' : 'asc';
+            } else {
+                currentSort = sortBy;
+                currentOrder = 'desc';
+            }
+            document.getElementById('sortBy').value = sortBy;
+            document.getElementById('sortOrder').value = currentOrder;
+            currentPage = 1;
+            loadProfiles();
+        }
 
-       // View profile details
-       async function viewProfile(edrpou) {
-           const modal = new bootstrap.Modal(document.getElementById('profileModal'));
-           const modalBody = document.getElementById('profileModalBody');
-           const modalTitle = document.getElementById('profileModalTitle');
+        // View profile details
+        async function viewProfile(edrpou) {
+            const modal = new bootstrap.Modal(document.getElementById('profileModal'));
+            const modalBody = document.getElementById('profileModalBody');
+            const modalTitle = document.getElementById('profileModalTitle');
+            const t = translations[currentLang];
 
-           // Show loading
-           modalBody.innerHTML = `
-               <div class="text-center p-5">
-                   <div class="spinner-border text-primary" role="status">
-                       <span class="visually-hidden">Завантаження...</span>
-                   </div>
-                   <p class="mt-3">Завантаження профілю...</p>
-               </div>
-           `;
-           modal.show();
+            // Show loading
+            modalBody.innerHTML = `
+                <div class="text-center p-5">
+                    <div class="spinner-border" role="status" style="width: 3rem; height: 3rem; color: var(--primary-color);">
+                        <span class="visually-hidden">${t.loadingProfile}</span>
+                    </div>
+                    <p class="mt-3">${t.loadingProfile}</p>
+                </div>
+            `;
+            modal.show();
 
-           try {
-               const response = await fetch(`/api/profile/${edrpou}/detailed`);
-               const profile = await response.json();
+            try {
+                const response = await fetch(`/api/profile/${edrpou}/detailed`);
+                const profile = await response.json();
 
-               modalTitle.innerHTML = `
-                   <i class="fas fa-user-tie"></i> ${profile.name} (${profile.edrpou})
-               `;
+                modalTitle.innerHTML = `
+                    <i class="fas fa-user-tie"></i> ${profile.name} (${profile.edrpou})
+                `;
 
-               modalBody.innerHTML = buildProfileHTML(profile);
-           } catch (error) {
-               console.error('Error loading profile:', error);
-               modalBody.innerHTML = `
-                   <div class="alert alert-danger">
-                       <i class="fas fa-exclamation-circle"></i> Помилка завантаження профілю
-                   </div>
-               `;
-           }
-       }
+                modalBody.innerHTML = await buildProfileHTML(profile, t);
+            } catch (error) {
+                console.error('Error loading profile:', error);
+                modalBody.innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-circle"></i> ${t.errorLoading}
+                    </div>
+                `;
+            }
+        }
 
-       // Build profile HTML
-       function buildProfileHTML(profile) {
-           let html = '<div class="row">';
 
-           // Left column - main metrics
-           html += '<div class="col-md-6">';
-           
-           // General metrics
-           html += `
-               <div class="profile-section">
-                   <h6><i class="fas fa-chart-line"></i> Основні показники</h6>
-                   <div class="metric-row">
-                       <span class="metric-label">Позиція на ринку:</span>
-                       <span class="metric-value">${getMarketPositionBadge(profile.market_position)}</span>
-                   </div>
-                   <div class="metric-row">
-                       <span class="metric-label">Загальна кількість тендерів:</span>
-                       <span class="metric-value">${formatNumber(profile.metrics.total_tenders)}</span>
-                   </div>
-                   <div class="metric-row">
-                       <span class="metric-label">Виграно тендерів:</span>
-                       <span class="metric-value">${formatNumber(profile.metrics.won_tenders)}</span>
-                   </div>
-                   <div class="metric-row">
-                       <span class="metric-label">Всього позицій:</span>
-                       <span class="metric-value">${formatNumber(profile.metrics.total_positions)}</span>
-                   </div>
-                   <div class="metric-row">
-                       <span class="metric-label">Виграно позицій:</span>
-                       <span class="metric-value">${formatNumber(profile.metrics.won_positions)}</span>
-                   </div>
-               </div>
-           `;
 
-           // Performance metrics
-           html += `
-               <div class="profile-section">
-                   <h6><i class="fas fa-trophy"></i> Показники ефективності</h6>
-                   <div class="metric-row">
-                       <span class="metric-label">Win Rate (тендери):</span>
-                       <span class="metric-value ${getWinRateClass(profile.metrics.win_rate)}">${formatPercent(profile.metrics.win_rate)}</span>
-                   </div>
-                   <div class="metric-row">
-                       <span class="metric-label">Win Rate (позиції):</span>
-                       <span class="metric-value ${getWinRateClass(profile.metrics.position_win_rate)}">${formatPercent(profile.metrics.position_win_rate)}</span>
-                   </div>
-                   <div class="metric-row">
-                       <span class="metric-label">Недавній Win Rate:</span>
-                       <span class="metric-value ${getWinRateClass(profile.metrics.recent_win_rate)}">${formatPercent(profile.metrics.recent_win_rate)}</span>
-                   </div>
-                   <div class="metric-row">
-                       <span class="metric-label">Темп зростання:</span>
-                       <span class="metric-value">${(profile.metrics.growth_rate * 100).toFixed(1)}%</span>
-                   </div>
-               </div>
-           `;
+        // Build profile HTML with cluster info
+        async function buildProfileHTML(profile, t) {
+            let html = '<div class="row">';
 
-           // Quality metrics
-           html += `
-               <div class="profile-section">
-                   <h6><i class="fas fa-shield-alt"></i> Показники якості</h6>
-                   <div class="metric-row">
-                       <span class="metric-label">Рівень надійності:</span>
-                       <span class="metric-value">${formatPercent(profile.reliability_score)}</span>
-                   </div>
-                   <div class="metric-row">
-                       <span class="metric-label">Стабільність:</span>
-                       <span class="metric-value">${formatPercent(profile.metrics.stability_score)}</span>
-                   </div>
-                   <div class="metric-row">
-                       <span class="metric-label">Спеціалізація:</span>
-                       <span class="metric-value">${formatPercent(profile.metrics.specialization_score)}</span>
-                   </div>
-                   <div class="metric-row">
-                       <span class="metric-label">Стійкість до конкуренції:</span>
-                       <span class="metric-value">${formatPercent(profile.metrics.competition_resistance)}</span>
-                   </div>
-               </div>
-           `;
+            // Left column - main metrics
+            html += '<div class="col-md-6">';
+            
+            // General metrics
+            html += `
+                <div class="profile-section">
+                    <h6><i class="fas fa-chart-line"></i> ${t.mainMetrics}</h6>
+                    <div class="metric-row">
+                        <span class="metric-label">${t.marketPosition}</span>
+                        <span class="metric-value">${getMarketPositionBadge(profile.market_position)}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">${t.totalTendersLabel}</span>
+                        <span class="metric-value">${formatNumber(profile.metrics.total_tenders)}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">${t.wonTenders}</span>
+                        <span class="metric-value">${formatNumber(profile.metrics.won_tenders)}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">${t.totalPositions}</span>
+                        <span class="metric-value">${formatNumber(profile.metrics.total_positions)}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">${t.wonPositions}</span>
+                        <span class="metric-value">${formatNumber(profile.metrics.won_positions)}</span>
+                    </div>
+                </div>
+            `;
 
-           html += '</div>'; // End left column
+            // Performance metrics
+            html += `
+                <div class="profile-section">
+                    <h6><i class="fas fa-trophy"></i> ${t.performanceMetrics}</h6>
+                    <div class="metric-row">
+                        <span class="metric-label">${t.winRateTenders}</span>
+                        <span class="metric-value ${getWinRateClass(profile.metrics.win_rate)}">${formatPercent(profile.metrics.win_rate)}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">${t.winRatePositions}</span>
+                        <span class="metric-value ${getWinRateClass(profile.metrics.position_win_rate)}">${formatPercent(profile.metrics.position_win_rate)}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">${t.recentWinRate}</span>
+                        <span class="metric-value ${getWinRateClass(profile.metrics.recent_win_rate)}">${formatPercent(profile.metrics.recent_win_rate)}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">${t.growthRate}</span>
+                        <span class="metric-value">${(profile.metrics.growth_rate * 100).toFixed(1)}%</span>
+                    </div>
+                </div>
+            `;
 
-           // Right column - categories and additional info
-           html += '<div class="col-md-6">';
+            // Quality metrics
+            html += `
+                <div class="profile-section">
+                    <h6><i class="fas fa-shield-alt"></i> ${t.qualityMetrics}і</h6>
+                    <div class="metric-row">
+                        <span class="metric-label">${t.reliabilityLevel}</span>
+                        <span class="metric-value">${formatPercent(profile.reliability_score)}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">${t.stability}</span>
+                        <span class="metric-value">${formatPercent(profile.metrics.stability_score)}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">${t.specialization}</span>
+                        <span class="metric-value">${formatPercent(profile.metrics.specialization_score)}</span>
+                    </div>
+                    <div class="metric-row">
+                        <span class="metric-label">${t.competitionResistance}</span>
+                        <span class="metric-value">${formatPercent(profile.metrics.competition_resistance)}</span>
+                    </div>
+                </div>
+            `;
 
-           // Categories
-           if (Object.keys(profile.categories).length > 0) {
-               html += `
-                   <div class="profile-section">
-                       <h6><i class="fas fa-tags"></i> Топ категорії</h6>
-               `;
-               
-               for (const [catName, catData] of Object.entries(profile.categories)) {
-                   html += `
-                       <div class="category-item">
-                           <strong>${catName}</strong>
-                           <div class="d-flex justify-content-between mt-1">
-                               <small>Позицій: ${catData.total}</small>
-                               <small>Виграно: ${catData.won}</small>
-                               <small class="${getWinRateClass(catData.win_rate)}">Win Rate: ${formatPercent(catData.win_rate)}</small>
-                           </div>
-                       </div>
-                   `;
-               }
-               
-               html += '</div>';
-           }
+            html += '</div>'; // End left column
 
-           // Competitive advantages
-           if (profile.competitive_advantages && profile.competitive_advantages.length > 0) {
-               html += `
-                   <div class="profile-section">
-                       <h6><i class="fas fa-star"></i> Конкурентні переваги</h6>
-                       <ul class="mb-0">
-               `;
-               profile.competitive_advantages.forEach(advantage => {
-                   html += `<li>${advantage}</li>`;
-               });
-               html += '</ul></div>';
-           }
+            // Right column - categories and additional info
+            html += '<div class="col-md-6">';
 
-           // Weaknesses
-           if (profile.weaknesses && profile.weaknesses.length > 0) {
-               html += `
-                   <div class="profile-section">
-                       <h6><i class="fas fa-exclamation-triangle"></i> Слабкі сторони</h6>
-                       <ul class="mb-0">
-               `;
-               profile.weaknesses.forEach(weakness => {
-                   html += `<li>${weakness}</li>`;
-               });
-               html += '</ul></div>';
-           }
+            // Categories with cluster info
+            if (Object.keys(profile.categories).length > 0) {
+                html += `
+                    <div class="profile-section">
+                        <h6><i class="fas fa-tags"></i> ${t.topCategories}</h6>
+                `;
+                
+                for (const [catName, catData] of Object.entries(profile.categories)) {
+                    const clusterInfo = await getClusterForCategory(catName);
+                    
+                    html += `
+                        <div class="category-item">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <strong>${catName}</strong>
+                                    ${clusterInfo ? `<br><span class="cluster-badge mt-1"><i class="fas fa-cubes"></i> ${clusterInfo.cluster_name}</span>` : ''}
+                                </div>
+                                <span class="${getWinRateClass(catData.win_rate)}">${formatPercent(catData.win_rate)}</span>
+                            </div>
+                            <div class="d-flex justify-content-between mt-2 category-stats">
+                                <span>${t.position} ${catData.total}</span>
+                                <span>${t.won} ${catData.won}</span>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                html += '</div>';
+            }
 
-           // Risk indicators
-           if (profile.has_risks && profile.risk_indicators) {
-               html += `
-                   <div class="profile-section">
-                       <h6><i class="fas fa-exclamation-circle"></i> Ризик-індикатори</h6>
-               `;
-               
-               for (const [riskType, riskData] of Object.entries(profile.risk_indicators)) {
-                   const riskClass = riskData.level === 'high' ? 'risk-high' : 
-                                   riskData.level === 'medium' ? 'risk-medium' : 'risk-low';
-                   html += `
-                       <div class="risk-indicator ${riskClass}">
-                           <strong>${getRiskTypeName(riskType)}</strong><br>
-                           <small>${riskData.message}</small>
-                       </div>
-                   `;
-               }
-               
-               html += '</div>';
-           }
+            // Competitive advantages
+            if (profile.competitive_advantages && profile.competitive_advantages.length > 0) {
+                html += `
+                    <div class="profile-section">
+                        <h6><i class="fas fa-star"></i> ${t.competitiveAdvantages}</h6>
+                        <ul class="mb-0">
+                `;
+                profile.competitive_advantages.forEach(advantage => {
+                    html += `<li>${advantage}</li>`;
+                });
+                html += '</ul></div>';
+            }
 
-           // Clusters
-           if (profile.clusters && profile.clusters.length > 0) {
-               html += `
-                   <div class="profile-section">
-                       <h6><i class="fas fa-network-wired"></i> Кластери діяльності</h6>
-                       <div>
-               `;
-               profile.clusters.forEach(cluster => {
-                   html += `<span class="badge bg-secondary me-2 mb-2">${getClusterName(cluster)}</span>`;
-               });
-               html += '</div></div>';
-           }
+            // Weaknesses
+            if (profile.weaknesses && profile.weaknesses.length > 0) {
+                html += `
+                    <div class="profile-section">
+                        <h6><i class="fas fa-exclamation-triangle"></i> ${t.weaknesses}</h6>
+                        <ul class="mb-0">
+                `;
+                profile.weaknesses.forEach(weakness => {
+                    html += `<li>${weakness}</li>`;
+                });
+                html += '</ul></div>';
+            }
 
-           // Top competitors
-           if (profile.top_competitors && profile.top_competitors.length > 0) {
-               html += `
-                   <div class="profile-section">
-                       <h6><i class="fas fa-users"></i> Топ конкуренти</h6>
-                       <div class="table-responsive">
-                           <table class="table table-sm">
-                               <thead>
-                                   <tr>
-                                       <th>ЄДРПОУ</th>
-                                       <th>Назва</th>
-                                       <th>Win Rate</th>
-                                   </tr>
-                               </thead>
-                               <tbody>
-               `;
-               
-               profile.top_competitors.slice(0, 5).forEach(competitor => {
-                   html += `
-                       <tr>
-                           <td>${competitor.edrpou}</td>
-                           <td>${competitor.name}</td>
-                           <td class="${getWinRateClass(competitor.year_win_rate)}">${formatPercent(competitor.year_win_rate)}</td>
-                       </tr>
-                   `;
-               });
-               
-               html += '</tbody></table></div></div>';
-           }
+            // Clusters (якщо є прямий список кластерів)
+            if (profile.clusters && profile.clusters.length > 0) {
+                html += `
+                    <div class="profile-section">
+                        <h6><i class="fas fa-network-wired"></i> ${t.activityClusters}</h6>
+                        <div>
+                `;
+                profile.clusters.forEach(cluster => {
+                    html += `<span class="cluster-badge me-2 mb-2">${getClusterName(cluster)}</span>`;
+                });
+                html += '</div></div>';
+            }
 
-           html += '</div>'; // End right column
-           html += '</div>'; // End row
+            // Top competitors
+            if (profile.top_competitors && profile.top_competitors.length > 0) {
+                html += `
+                    <div class="profile-section">
+                        <h6><i class="fas fa-users"></i> ${t.topCompetitors}</h6>
+                        <div class="table-responsive">
+                            <table class="table table-sm">
+                                <thead>
+                                    <tr>
+                                        <th>${t.edrpou}</th>
+                                        <th>${t.name}</th>
+                                        <th>${t.winRate}</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                `;
+                
+                profile.top_competitors.slice(0, 5).forEach(competitor => {
+                    html += `
+                        <tr>
+                            <td>${competitor.edrpou}</td>
+                            <td>${competitor.name}</td>
+                            <td class="${getWinRateClass(competitor.year_win_rate)}">${formatPercent(competitor.year_win_rate)}</td>
+                        </tr>
+                    `;
+                });
+                
+                html += '</tbody></table></div></div>';
+            }
 
-           // Additional info
-           html += `
-               <div class="profile-section mt-3">
-                   <small class="text-muted">
-                       <i class="fas fa-info-circle"></i> 
-                       Версія профілю: ${profile.profile_version} | 
-                       Останнє оновлення: ${new Date(profile.last_updated).toLocaleDateString('uk-UA')}
-                   </small>
-               </div>
-           `;
+            html += '</div>'; // End right column
+            html += '</div>'; // End row
 
-           return html;
-       }
+            // Additional info
+            html += `
+                <div class="profile-section mt-3">
+                    <small class="text-muted">
+                        <i class="fas fa-info-circle"></i> 
+                        ${t.profileVersion}: ${profile.profile_version} | 
+                        ${t.lastUpdate}: ${new Date(profile.last_updated).toLocaleDateString('uk-UA')}
+                    </small>
+                </div>
+            `;
 
-       // Get risk type name
-       function getRiskTypeName(riskType) {
-           const names = {
-               'early_warning': 'Раннє попередження',
-               'concentration_risk': 'Концентраційний ризик',
-               'disappearance_risk': 'Ризик зникнення'
-           };
-           return names[riskType] || riskType;
-       }
+            return html;
+        }
 
-       // Get cluster name
-       function getClusterName(cluster) {
-           const names = {
-               'agricultural_parts': 'Сільськогосподарські запчастини',
-               'construction': 'Будівництво',
-               'medical': 'Медицина',
-               'office_supplies': 'Офісні товари',
-               'electronics': 'Електроніка',
-               'food': 'Продукти харчування',
-               'fuel': 'Паливо',
-               'services': 'Послуги',
-               'communication': 'Зв\'язок та IT'
-           };
-           return names[cluster] || cluster;
-       }
+        // Get cluster name (Ukrainian translation)
+        function getClusterName(cluster) {
+            const names = {
+                'agricultural_parts': 'Сільськогосподарські запчастини',
+                'construction': 'Будівництво',
+                'medical': 'Медицина',
+                'office_supplies': 'Офісні товари',
+                'electronics': 'Електроніка',
+                'food': 'Продукти харчування',
+                'fuel': 'Паливо',
+                'services': 'Послуги',
+                'communication': 'Зв\'язок та IT'
+            };
+            return names[cluster] || cluster;
+        }
 
-       // Event listeners
-       document.getElementById('searchInput').addEventListener('input', function() {
-           clearTimeout(searchTimeout);
-           searchTimeout = setTimeout(() => {
-               currentPage = 1;
-               loadProfiles();
-           }, 500);
-       });
+        // Event listeners
+        document.getElementById('searchInput').addEventListener('input', function() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                currentPage = 1;
+                loadProfiles();
+            }, 500);
+        });
 
-       document.getElementById('sortBy').addEventListener('change', function() {
-           currentSort = this.value;
-           currentPage = 1;
-           loadProfiles();
-       });
+        document.getElementById('sortBy').addEventListener('change', function() {
+            currentSort = this.value;
+            currentPage = 1;
+            loadProfiles();
+        });
 
-       document.getElementById('sortOrder').addEventListener('change', function() {
-           currentOrder = this.value;
-           currentPage = 1;
-           loadProfiles();
-       });
+        document.getElementById('sortOrder').addEventListener('change', function() {
+            currentOrder = this.value;
+            currentPage = 1;
+            loadProfiles();
+        });
 
-       // Initialize page
-       document.addEventListener('DOMContentLoaded', function() {
-           loadStatistics();
-           loadProfiles();
-       });
-   </script>
+        // Initialize page
+        document.addEventListener('DOMContentLoaded', async function() {
+            await loadCategoriesMap(); // Завантажуємо маппінг категорій
+            loadStatistics();
+            loadProfiles();
+        });
+    </script>
 </body>
 </html>
